@@ -2,8 +2,6 @@ package main
 
 import (
 	"errors"
-
-	"github.com/beevik/go6502"
 )
 
 // MMU errors
@@ -16,15 +14,15 @@ var (
 // interface is used for every type of MMU-managed memory, including RAM,
 // ROM, IO and peripheral buffers.
 type MemoryBank interface {
-	AddressRange() (start go6502.Address, end go6502.Address)
-	LoadByte(addr go6502.Address) byte
-	LoadAddress(addr go6502.Address) go6502.Address
-	StoreByte(addr go6502.Address, v byte)
-	StoreAddress(addr go6502.Address, v go6502.Address)
+	AddressRange() (start uint16, end uint16)
+	LoadByte(addr uint16) byte
+	LoadAddress(addr uint16) uint16
+	StoreByte(addr uint16, v byte)
+	StoreAddress(addr uint16, v uint16)
 }
 
 // The access bit mask is used to indicate memory access: read and/or write.
-type access int
+type access uint8
 
 const (
 	read access = 1 << iota
@@ -52,7 +50,7 @@ func NewMMU() *MMU {
 }
 
 // LoadByte loads a single byte from the address and returns it.
-func (m *MMU) LoadByte(addr go6502.Address) (byte, error) {
+func (m *MMU) LoadByte(addr uint16) (byte, error) {
 	b := m.pages[addr>>8].read
 	if b == nil {
 		return 0, ErrMemoryOutOfBounds
@@ -62,10 +60,10 @@ func (m *MMU) LoadByte(addr go6502.Address) (byte, error) {
 
 // LoadBytes loads multiple bytes from the address and stores them into
 // the buffer 'b'.
-func (m *MMU) LoadBytes(addr go6502.Address, b []byte) error {
+func (m *MMU) LoadBytes(addr uint16, b []byte) error {
 	var err error
 	for i, n := 0, len(b); i < n; i++ {
-		b[i], err = m.LoadByte(addr + go6502.Address(i))
+		b[i], err = m.LoadByte(addr + uint16(i))
 		if err != nil {
 			return err
 		}
@@ -75,7 +73,7 @@ func (m *MMU) LoadBytes(addr go6502.Address, b []byte) error {
 
 // LoadAddress loads a 16-bit address value from the requested address and
 // returns it.
-func (m *MMU) LoadAddress(addr go6502.Address) (go6502.Address, error) {
+func (m *MMU) LoadAddress(addr uint16) (uint16, error) {
 	b := m.pages[addr>>8].read
 	if b == nil {
 		return 0, ErrMemoryOutOfBounds
@@ -84,7 +82,7 @@ func (m *MMU) LoadAddress(addr go6502.Address) (go6502.Address, error) {
 }
 
 // StoreByte stores a byte to the requested address.
-func (m *MMU) StoreByte(addr go6502.Address, v byte) error {
+func (m *MMU) StoreByte(addr uint16, v byte) error {
 	b := m.pages[addr>>8].write
 	if b == nil {
 		return ErrMemoryOutOfBounds
@@ -94,10 +92,10 @@ func (m *MMU) StoreByte(addr go6502.Address, v byte) error {
 }
 
 // StoreBytes stores multiple bytes to the requested address.
-func (m *MMU) StoreBytes(addr go6502.Address, b []byte) error {
+func (m *MMU) StoreBytes(addr uint16, b []byte) error {
 	var err error
 	for i, n := 0, len(b); i < n; i++ {
-		err = m.StoreByte(addr+go6502.Address(i), b[i])
+		err = m.StoreByte(addr+uint16(i), b[i])
 		if err != nil {
 			return err
 		}
@@ -106,7 +104,7 @@ func (m *MMU) StoreBytes(addr go6502.Address, b []byte) error {
 }
 
 // StoreAddress stores a 16-bit address 'v' to the requested address.
-func (m *MMU) StoreAddress(addr go6502.Address, v go6502.Address) error {
+func (m *MMU) StoreAddress(addr uint16, v uint16) error {
 	b := m.pages[addr>>8].write
 	if b == nil {
 		return ErrMemoryOutOfBounds
@@ -193,14 +191,14 @@ func (m *MMU) DeactivateBank(b MemoryBank, access access) {
 
 // RAM represents a random-access memory bank that can be read and written.
 type RAM struct {
-	start go6502.Address
-	end   go6502.Address
+	start uint16
+	end   uint16
 	buf   []byte
 }
 
 // NewRAM creates a new RAM memory bank of the requested size. Its
 // contents are initialized to zeroes.
-func NewRAM(addr go6502.Address, size int) *RAM {
+func NewRAM(addr uint16, size int) *RAM {
 	if int(addr)+size > 0x10000 {
 		panic("RAM address exceeds 64K")
 	}
@@ -209,45 +207,45 @@ func NewRAM(addr go6502.Address, size int) *RAM {
 	}
 	return &RAM{
 		start: addr,
-		end:   addr + go6502.Address(size),
+		end:   addr + uint16(size),
 		buf:   make([]byte, size),
 	}
 }
 
 // AddressRange returns the range of addresses in the RAM bank.
-func (r *RAM) AddressRange() (start go6502.Address, end go6502.Address) {
+func (r *RAM) AddressRange() (start uint16, end uint16) {
 	return r.start, r.end
 }
 
 // LoadByte returns the value of a byte of memory at the requested address.
-func (r *RAM) LoadByte(addr go6502.Address) byte {
+func (r *RAM) LoadByte(addr uint16) byte {
 	return r.buf[addr-r.start]
 }
 
 // LoadAddress loads a 16-bit address from the requested memory address.
-func (r *RAM) LoadAddress(addr go6502.Address) go6502.Address {
+func (r *RAM) LoadAddress(addr uint16) uint16 {
 	i := int(addr - r.start)
 	if (i & 0xff) == 0xff {
-		return go6502.Address(r.buf[i]) | go6502.Address(r.buf[i-0xff])<<8
+		return uint16(r.buf[i]) | uint16(r.buf[i-0xff])<<8
 	}
-	return go6502.Address(r.buf[i]) | go6502.Address(r.buf[i+1])<<8
+	return uint16(r.buf[i]) | uint16(r.buf[i+1])<<8
 }
 
 // StoreByte stores a byte value at the requested address.
-func (r *RAM) StoreByte(addr go6502.Address, b byte) {
+func (r *RAM) StoreByte(addr uint16, b byte) {
 	r.buf[addr] = b
 }
 
 // ROM represents a bank of read-only memory.
 type ROM struct {
-	start go6502.Address
-	end   go6502.Address
+	start uint16
+	end   uint16
 	buf   []byte
 }
 
 // NewROM creates a new ROM memory bank initialized with the contents of the
 // provided buffer.
-func NewROM(addr go6502.Address, b []byte) *ROM {
+func NewROM(addr uint16, b []byte) *ROM {
 	if int(addr)+len(b) > 0x10000 {
 		panic("ROM address space exceeds 64K")
 	}
@@ -256,7 +254,7 @@ func NewROM(addr go6502.Address, b []byte) *ROM {
 	}
 	rom := &ROM{
 		start: addr,
-		end:   addr + go6502.Address(len(b)),
+		end:   addr + uint16(len(b)),
 		buf:   make([]byte, len(b)),
 	}
 	copy(rom.buf, b)
@@ -264,25 +262,25 @@ func NewROM(addr go6502.Address, b []byte) *ROM {
 }
 
 // AddressRange returns the range of addresses in the ROM bank.
-func (r *ROM) AddressRange() (start go6502.Address, end go6502.Address) {
+func (r *ROM) AddressRange() (start uint16, end uint16) {
 	return r.start, r.end
 }
 
 // LoadByte returns the value of a byte of memory at the requested address.
-func (r *ROM) LoadByte(addr go6502.Address) byte {
+func (r *ROM) LoadByte(addr uint16) byte {
 	return r.buf[addr-r.start]
 }
 
 // LoadAddress loads a 16-bit address from the requested memory address.
-func (r *ROM) LoadAddress(addr go6502.Address) go6502.Address {
+func (r *ROM) LoadAddress(addr uint16) uint16 {
 	i := int(addr - r.start)
 	if (i & 0xff) == 0xff {
-		return go6502.Address(r.buf[i]) | go6502.Address(r.buf[i-0xff])<<8
+		return uint16(r.buf[i]) | uint16(r.buf[i-0xff])<<8
 	}
-	return go6502.Address(r.buf[i]) | go6502.Address(r.buf[i+1])<<8
+	return uint16(r.buf[i]) | uint16(r.buf[i+1])<<8
 }
 
 // StoreByte does nothing for ROM.
-func (r *ROM) StoreByte(addr go6502.Address, b byte) {
+func (r *ROM) StoreByte(addr uint16, b byte) {
 	// Do nothing
 }
