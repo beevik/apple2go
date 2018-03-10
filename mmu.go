@@ -14,11 +14,17 @@ var (
 // interface is used for every type of MMU-managed memory, including RAM,
 // ROM, IO and peripheral buffers.
 type MemoryBank interface {
-	AddressRange() (start uint16, end uint16)
+	AddressRange() Range
 	LoadByte(addr uint16) byte
 	LoadAddress(addr uint16) uint16
 	StoreByte(addr uint16, v byte)
 	StoreAddress(addr uint16, v uint16)
+}
+
+// Range represents an address range.
+type Range struct {
+	Start uint16
+	End   uint16
 }
 
 // The access bit mask is used to indicate memory access: read and/or write.
@@ -38,14 +44,26 @@ type page struct {
 // An MMU represents the Apple2 memory management unit. It manages multiple
 // memory banks, each with different address ranges and access patterns.
 type MMU struct {
-	banks map[MemoryBank]access
-	pages [256]page
+	mainRAM   []byte // entire 64K main RAM address space
+	auxRAM    []byte // entire 64K aux RAM address space
+	systemROM []byte // entire 16K system ROM address space
+
+	pages [256]page // 256-byte pages covering 64K address space
 }
 
 // NewMMU creates a new Apple2 memory management unit.
 func NewMMU() *MMU {
+	mainRAM := make([]byte, 64*1024)
+	auxRAM := make([]byte, 64*1024)
+	systemROM := make([]byte, 16*1024)
+
+	// TODO: Create memory banks
+	// TODO: Activate initial memory banks
+
 	return &MMU{
-		banks: make(map[MemoryBank]access),
+		mainRAM:   mainRAM,
+		auxRAM:    auxRAM,
+		systemROM: systemROM,
 	}
 }
 
@@ -113,45 +131,13 @@ func (m *MMU) StoreAddress(addr uint16, v uint16) error {
 	return nil
 }
 
-// AddBank adds a memory bank to be managed by the MMU. The
-// bank starts inactive for reads and writes.
-func (m *MMU) AddBank(b MemoryBank) {
-	m.banks[b] = 0
-}
-
-// RemoveBank removes a memory bank from being managed by the MMU.
-// If it was active for reads or writes, it is deactivated first.
-func (m *MMU) RemoveBank(b MemoryBank) {
-	active, ok := m.banks[b]
-	if !ok {
-		return
-	}
-
-	if active != 0 {
-		m.DeactivateBank(b, active)
-	}
-	delete(m.banks, b)
-}
-
-// ActivateBank activates a memory bank in the MMU so that it handles all
-// accesses to its addresses. Read and write access may be configured
-// independently.
-func (m *MMU) ActivateBank(b MemoryBank, access access) {
-	active, ok := m.banks[b]
-	if !ok {
-		return
-	}
-
-	enableReads := (access&read) != 0 && (active&read) == 0
-	enableWrites := (access&write) != 0 && (active&write) == 0
-	if !enableReads && !enableWrites {
-		return
-	}
-
-	m.banks[b] = m.banks[b] | access
-
-	start, end := b.AddressRange()
-	for i, j := start>>8, end>>8; i < j; i++ {
+// ActivateBank activates a range of addresses within a memory bank so
+// that all accesses to addresses within that range are handled by the bank.
+// Read and write access may be configured independently.
+func (m *MMU) ActivateBank(b MemoryBank, r Range, access access) {
+	enableReads := (access & read) != 0
+	enableWrites := (access & write) != 0
+	for i, j := r.Start>>8, r.End>>8; i < j; i++ {
 		if enableReads {
 			m.pages[i].read = b
 		}
@@ -161,25 +147,13 @@ func (m *MMU) ActivateBank(b MemoryBank, access access) {
 	}
 }
 
-// DeactivateBank deactivates a memory bank in the MMU so that it no longer
-// handles accesses to its addresses. Read and write access may be configured
-// independently.
-func (m *MMU) DeactivateBank(b MemoryBank, access access) {
-	active, ok := m.banks[b]
-	if !ok {
-		return
-	}
-
-	disableReads := (access&read) != 0 && (active&read) != 0
-	disableWrites := (access&write) != 0 && (active&write) != 0
-	if !disableReads && !disableWrites {
-		return
-	}
-
-	m.banks[b] = m.banks[b] &^ access
-
-	start, end := b.AddressRange()
-	for i, j := start>>8, end>>8; i < j; i++ {
+// DeactivateBank deactivates a range of addresses within a memory bank so
+// that the bank no longer handles accesses to address within that range.
+// Read and write access may be configured independently.
+func (m *MMU) DeactivateBank(b MemoryBank, r Range, access access) {
+	disableReads := (access & read) != 0
+	disableWrites := (access & write) != 0
+	for i, j := r.Start>>8, r.End>>8; i < j; i++ {
 		if disableReads {
 			m.pages[i].read = nil
 		}
@@ -189,46 +163,45 @@ func (m *MMU) DeactivateBank(b MemoryBank, access access) {
 	}
 }
 
-// RAM represents a random-access memory bank that can be read and written.
+// RAM represents a bank of random-access memory that can be read and written.
 type RAM struct {
-	start uint16
-	end   uint16
-	buf   []byte
+	r   Range
+	buf []byte // entire memory
 }
 
-// NewRAM creates a new RAM memory bank of the requested size. Its
-// contents are initialized to zeroes.
-func NewRAM(addr uint16, size int) *RAM {
-	if int(addr)+size > 0x10000 {
+// NewRAM creates a new RAM memory bank of the requested size.
+func NewRAM(r Range, buf []byte) *RAM {
+	if r.End > uint16(len(buf)) {
 		panic("RAM address exceeds 64K")
 	}
-	if size&0xff != 0 {
+	if r.Start > r.End {
+		panic("Invalid address range")
+	}
+	if (r.End-r.Start)&0xff != 0 {
 		panic("RAM size must be a multiple of the 256-byte page size")
 	}
 	return &RAM{
-		start: addr,
-		end:   addr + uint16(size),
-		buf:   make([]byte, size),
+		r:   r,
+		buf: buf,
 	}
 }
 
 // AddressRange returns the range of addresses in the RAM bank.
-func (r *RAM) AddressRange() (start uint16, end uint16) {
-	return r.start, r.end
+func (r *RAM) AddressRange() Range {
+	return r.r
 }
 
 // LoadByte returns the value of a byte of memory at the requested address.
 func (r *RAM) LoadByte(addr uint16) byte {
-	return r.buf[addr-r.start]
+	return r.buf[addr]
 }
 
 // LoadAddress loads a 16-bit address from the requested memory address.
 func (r *RAM) LoadAddress(addr uint16) uint16 {
-	i := int(addr - r.start)
-	if (i & 0xff) == 0xff {
-		return uint16(r.buf[i]) | uint16(r.buf[i-0xff])<<8
+	if (addr & 0xff) == 0xff {
+		return uint16(r.buf[addr]) | uint16(r.buf[addr-0xff])<<8
 	}
-	return uint16(r.buf[i]) | uint16(r.buf[i+1])<<8
+	return uint16(r.buf[addr]) | uint16(r.buf[addr+1])<<8
 }
 
 // StoreByte stores a byte value at the requested address.
@@ -238,46 +211,51 @@ func (r *RAM) StoreByte(addr uint16, b byte) {
 
 // ROM represents a bank of read-only memory.
 type ROM struct {
-	start uint16
-	end   uint16
-	buf   []byte
+	r    Range
+	base uint16
+	buf  []byte
 }
 
-// NewROM creates a new ROM memory bank initialized with the contents of the
-// provided buffer.
-func NewROM(addr uint16, b []byte) *ROM {
-	if int(addr)+len(b) > 0x10000 {
+// NewROM creates a new ROM memory bank within the provided memory buffer.
+// The address is the start address of the bank's memory range, the size is
+// the number of bytes in the bank, the buffer contains the entire memory
+// space for which the bank is a window, and the base address is the memory
+// address of the buffer's first byte.
+func NewROM(r Range, buf []byte, baseAddr uint16) *ROM {
+	if r.End > uint16(len(buf)) {
 		panic("ROM address space exceeds 64K")
 	}
-	if len(b)&0xff != 0 {
+	if r.Start > r.End {
+		panic("Invalid address range")
+	}
+	if (r.End-r.Start)&0xff != 0 {
 		panic("ROM size must be a multiple of the 256-byte page size")
 	}
 	rom := &ROM{
-		start: addr,
-		end:   addr + uint16(len(b)),
-		buf:   make([]byte, len(b)),
+		r:    r,
+		base: baseAddr,
+		buf:  buf,
 	}
-	copy(rom.buf, b)
 	return rom
 }
 
 // AddressRange returns the range of addresses in the ROM bank.
-func (r *ROM) AddressRange() (start uint16, end uint16) {
-	return r.start, r.end
+func (r *ROM) AddressRange() Range {
+	return r.r
 }
 
 // LoadByte returns the value of a byte of memory at the requested address.
 func (r *ROM) LoadByte(addr uint16) byte {
-	return r.buf[addr-r.start]
+	return r.buf[addr-r.base]
 }
 
 // LoadAddress loads a 16-bit address from the requested memory address.
 func (r *ROM) LoadAddress(addr uint16) uint16 {
-	i := int(addr - r.start)
-	if (i & 0xff) == 0xff {
-		return uint16(r.buf[i]) | uint16(r.buf[i-0xff])<<8
+	addr -= r.base
+	if (addr & 0xff) == 0xff {
+		return uint16(r.buf[addr]) | uint16(r.buf[addr-0xff])<<8
 	}
-	return uint16(r.buf[i]) | uint16(r.buf[i+1])<<8
+	return uint16(r.buf[addr]) | uint16(r.buf[addr+1])<<8
 }
 
 // StoreByte does nothing for ROM.
