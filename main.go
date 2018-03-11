@@ -1,11 +1,11 @@
 package main
 
 type apple2 struct {
-	mmu *MMU
+	mmu *mmu
 }
 
 func newApple2() *apple2 {
-	mmu := NewMMU()
+	mmu := newMMU()
 
 	return &apple2{
 		mmu: mmu,
