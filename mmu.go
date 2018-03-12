@@ -26,10 +26,10 @@ type bankAccessor interface {
 	StoreByte(addr uint16, v byte)
 }
 
-// Bank identifiers
+// Memory bank identifiers
 const (
 	bankIDSystemROM        uint8 = iota // $C000..$FFFF (CD/EF ROM)
-	bankIDMainZPS                       // $0000..$01FF (ZeroPage + Stack)
+	bankIDMainZPS                       // $0000..$01FF (ZeroPage+Stack)
 	bankIDMainRAM                       // $0200..$BFFF (Lower 48K)
 	bankIDMainRAMDx1                    // $D000..$DFFF (Dx Bank 1)
 	bankIDMainRAMDx2                    // $D000..$DFFF (Dx Bank 2)
@@ -38,7 +38,7 @@ const (
 	bankIDMainDisplayPage2              // $0800..$0BFF (Text+LoRes page 2)
 	bankIDMainHiRes1                    // $2000..$3FFF (HiRes page 1)
 	bankIDMainHiRes2                    // $4000..$5FFF (HiRes page 2)
-	bankIDAuxZPS                        // $0000..$01FF (ZeroPage + Stack)
+	bankIDAuxZPS                        // $0000..$01FF (ZeroPage+Stack)
 	bankIDAuxRAM                        // $0200..$BFFF (Lower 48K)
 	bankIDAuxRAMDx1                     // $D000..$DFFF (Dx Bank 1)
 	bankIDAuxRAMDx2                     // $D000..$DFFF (Dx Bank 2)
@@ -52,8 +52,8 @@ const (
 	bankCount
 )
 
-// A page describes the bank(s) mapped into a 256-byte chunk of memory.
-// Different pages can sometimes be mapped for reading and writing.
+// Each memory page holds 256 bytes and can be mapped to a bank for reads
+// and a bank for writes.
 type page struct {
 	read  *bank // memory bank used for this page's reads
 	write *bank // memory bank used for this page's writes
@@ -241,7 +241,6 @@ func (m *mmu) addIOSwitchBank(id uint8, size, baseAddr uint16) {
 		id:       id,
 		size:     size,
 		baseAddr: baseAddr,
-		accessor: &ioSwitchBankAccessor{},
 	}
 }
 
@@ -250,7 +249,6 @@ func (m *mmu) addIOSlotROMBank(id uint8, size, baseAddr uint16) {
 		id:       id,
 		size:     size,
 		baseAddr: baseAddr,
-		accessor: &ioSlotROMBankAccessor{},
 	}
 }
 
@@ -259,12 +257,15 @@ func (m *mmu) addIOExpansionROMBank(id uint8, size, baseAddr uint16) {
 		id:       id,
 		size:     size,
 		baseAddr: baseAddr,
-		accessor: &ioExpansionROMBankAccessor{},
 	}
 }
 
+func (m *mmu) setBankAccessor(bankID uint8, a bankAccessor) {
+	m.banks[bankID].accessor = a
+}
+
 // activateBank activates all the pages within a bank's range of virtual
-// addresses so that accesses to memory within that range are handled
+// addresses so that accesses to addresses within that range are handled
 // by the bank's accessor. Read and write access may be activated
 // independently.
 func (m *mmu) activateBank(bankID uint8, access access) {
@@ -285,49 +286,27 @@ func (m *mmu) activateBank(bankID uint8, access access) {
 	}
 }
 
-// deactivateBank deactivates all the pages within a bank's range of virtual
-// addresses so that the bank's accessor no longer handles accesses to
-// any address within that range. Read and write access may be deactivated
-// independently.
-func (m *mmu) deactivateBank(bankID uint8, access access) {
-	b := &m.banks[bankID]
-
-	disableReads := (access & read) != 0
-	disableWrites := (access & write) != 0
-
-	p0 := b.baseAddr >> 8
-	pn := p0 + b.size>>8
-	for p := p0; p < pn; p++ {
-		if disableReads && m.pages[p].read == b {
-			m.pages[p].read = nil
-		}
-		if disableWrites && m.pages[p].write == b {
-			m.pages[p].write = nil
-		}
-	}
-}
-
 type ramBankAccessor struct {
 	mem []byte
 }
 
-func (r *ramBankAccessor) LoadByte(addr uint16) byte {
-	return r.mem[addr]
+func (a *ramBankAccessor) LoadByte(addr uint16) byte {
+	return a.mem[addr]
 }
 
-func (r *ramBankAccessor) StoreByte(addr uint16, v byte) {
-	r.mem[addr] = v
+func (a *ramBankAccessor) StoreByte(addr uint16, v byte) {
+	a.mem[addr] = v
 }
 
 type romBankAccessor struct {
 	mem []byte
 }
 
-func (r *romBankAccessor) LoadByte(addr uint16) byte {
-	return r.mem[addr]
+func (a *romBankAccessor) LoadByte(addr uint16) byte {
+	return a.mem[addr]
 }
 
-func (r *romBankAccessor) StoreByte(addr uint16, v byte) {
+func (a *romBankAccessor) StoreByte(addr uint16, v byte) {
 	// Do nothing
 }
 
@@ -335,52 +314,22 @@ type displayBankAccessor struct {
 	mem []byte
 }
 
-func (m *displayBankAccessor) LoadByte(addr uint16) byte {
-	return m.mem[addr]
+func (a *displayBankAccessor) LoadByte(addr uint16) byte {
+	return a.mem[addr]
 }
 
-func (m *displayBankAccessor) StoreByte(addr uint16, v byte) {
-	m.mem[addr] = v
+func (a *displayBankAccessor) StoreByte(addr uint16, v byte) {
+	a.mem[addr] = v
 }
 
 type hiResBankAccessor struct {
 	mem []byte
 }
 
-func (m *hiResBankAccessor) LoadByte(addr uint16) byte {
-	return m.mem[addr]
+func (a *hiResBankAccessor) LoadByte(addr uint16) byte {
+	return a.mem[addr]
 }
 
-func (m *hiResBankAccessor) StoreByte(addr uint16, v byte) {
-	m.mem[addr] = v
-}
-
-type ioSwitchBankAccessor struct {
-}
-
-func (b *ioSwitchBankAccessor) LoadByte(addr uint16) byte {
-	return 0
-}
-
-func (b *ioSwitchBankAccessor) StoreByte(addr uint16, v byte) {
-}
-
-type ioSlotROMBankAccessor struct {
-}
-
-func (b *ioSlotROMBankAccessor) LoadByte(addr uint16) byte {
-	return 0
-}
-
-func (b *ioSlotROMBankAccessor) StoreByte(addr uint16, v byte) {
-}
-
-type ioExpansionROMBankAccessor struct {
-}
-
-func (b *ioExpansionROMBankAccessor) LoadByte(addr uint16) byte {
-	return 0
-}
-
-func (b *ioExpansionROMBankAccessor) StoreByte(addr uint16, v byte) {
+func (a *hiResBankAccessor) StoreByte(addr uint16, v byte) {
+	a.mem[addr] = v
 }
