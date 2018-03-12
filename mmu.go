@@ -124,31 +124,26 @@ func newMMU() *mmu {
 	return m
 }
 
-func (m *mmu) LoadByte(addr uint16) (byte, error) {
+func (m *mmu) LoadByte(addr uint16) byte {
 	b := m.pages[addr>>8].read
 	if b == nil {
-		return 0, errMemoryFault
+		return 0
 	}
 
 	paddr := addr - b.baseAddr
-	return b.accessor.LoadByte(paddr), nil
+	return b.accessor.LoadByte(paddr)
 }
 
-func (m *mmu) LoadBytes(addr uint16, b []byte) error {
-	var err error
+func (m *mmu) LoadBytes(addr uint16, b []byte) {
 	for i, n := 0, len(b); i < n; i++ {
-		b[i], err = m.LoadByte(addr + uint16(i))
-		if err != nil {
-			return err
-		}
+		b[i] = m.LoadByte(addr + uint16(i))
 	}
-	return nil
 }
 
-func (m *mmu) LoadAddress(addr uint16) (uint16, error) {
+func (m *mmu) LoadAddress(addr uint16) uint16 {
 	b := m.pages[addr>>8].read
 	if b == nil {
-		return 0, errMemoryFault
+		return 0
 	}
 
 	paddr := addr - b.baseAddr
@@ -159,35 +154,29 @@ func (m *mmu) LoadAddress(addr uint16) (uint16, error) {
 	} else {
 		hi = b.accessor.LoadByte(paddr + 1)
 	}
-	return uint16(lo) | uint16(hi)<<8, nil
+	return uint16(lo) | uint16(hi)<<8
 }
 
-func (m *mmu) StoreByte(addr uint16, v byte) error {
+func (m *mmu) StoreByte(addr uint16, v byte) {
 	b := m.pages[addr>>8].write
 	if b == nil {
-		return errMemoryFault
+		return
 	}
 
 	paddr := addr - b.baseAddr
 	b.accessor.StoreByte(paddr, v)
-	return nil
 }
 
-func (m *mmu) StoreBytes(addr uint16, b []byte) error {
-	var err error
+func (m *mmu) StoreBytes(addr uint16, b []byte) {
 	for i, n := 0, len(b); i < n; i++ {
-		err = m.StoreByte(addr+uint16(i), b[i])
-		if err != nil {
-			return err
-		}
+		m.StoreByte(addr+uint16(i), b[i])
 	}
-	return nil
 }
 
-func (m *mmu) StoreAddress(addr, v uint16) error {
+func (m *mmu) StoreAddress(addr, v uint16) {
 	b := m.pages[addr>>8].write
 	if b == nil {
-		return errMemoryFault
+		return
 	}
 
 	paddr := addr - b.baseAddr
@@ -197,7 +186,6 @@ func (m *mmu) StoreAddress(addr, v uint16) error {
 	} else {
 		b.accessor.StoreByte(paddr+1, byte(v>>8))
 	}
-	return nil
 }
 
 func (m *mmu) addRAMBank(id uint8, mem []byte, baseAddr uint16) {
@@ -282,6 +270,27 @@ func (m *mmu) activateBank(bankID uint8, access access) {
 		}
 		if enableWrites {
 			m.pages[p].write = b
+		}
+	}
+}
+
+// deactivateBank deactivates all the pages within a bank's range of virtual
+// addresses so that accesses to addresses within that range are ignored.
+// Read and write access may be activated independently.
+func (m *mmu) deactivateBank(bankID uint8, access access) {
+	b := &m.banks[bankID]
+
+	disableReads := (access & read) != 0
+	disableWrites := (access & write) != 0
+
+	p0 := b.baseAddr >> 8
+	pn := p0 + b.size>>8
+	for p := p0; p < pn; p++ {
+		if disableReads {
+			m.pages[p].read = nil
+		}
+		if disableWrites {
+			m.pages[p].write = nil
 		}
 	}
 }
