@@ -1,14 +1,5 @@
 package main
 
-import (
-	"errors"
-)
-
-// MMU errors
-var (
-	errMemoryFault = errors.New("Memory fault")
-)
-
 // A bank represents a switchable bank of memory.
 type bank struct {
 	id       uint8  // bank ID
@@ -28,26 +19,27 @@ type bankAccessor interface {
 
 // Memory bank identifiers
 const (
-	bankIDSystemROM        uint8 = iota // $C000..$FFFF (CD/EF ROM)
+	bankIDSystemCXROM      uint8 = iota // $C100..$CFFF (Cx ROM)
+	bankIDSystemDEFROM                  // $D000..$FFFF (DEF ROM)
 	bankIDMainZPS                       // $0000..$01FF (ZeroPage+Stack)
 	bankIDMainRAM                       // $0200..$BFFF (Lower 48K)
-	bankIDMainRAMDx1                    // $D000..$DFFF (Dx Bank 1)
-	bankIDMainRAMDx2                    // $D000..$DFFF (Dx Bank 2)
-	bankIDMainRAMEF                     // $E000..$FFFF (EF RAM)
+	bankIDMainDX1RAM                    // $D000..$DFFF (Dx Bank 1)
+	bankIDMainDX2RAM                    // $D000..$DFFF (Dx Bank 2)
+	bankIDMainEFRAM                     // $E000..$FFFF (EF RAM)
 	bankIDMainDisplayPage1              // $0400..$07FF (Text+LoRes page 1)
 	bankIDMainDisplayPage2              // $0800..$0BFF (Text+LoRes page 2)
 	bankIDMainHiRes1                    // $2000..$3FFF (HiRes page 1)
 	bankIDMainHiRes2                    // $4000..$5FFF (HiRes page 2)
 	bankIDAuxZPS                        // $0000..$01FF (ZeroPage+Stack)
 	bankIDAuxRAM                        // $0200..$BFFF (Lower 48K)
-	bankIDAuxRAMDx1                     // $D000..$DFFF (Dx Bank 1)
-	bankIDAuxRAMDx2                     // $D000..$DFFF (Dx Bank 2)
-	bankIDAuxRAMEF                      // $E000..$FFFF (EF RAM)
+	bankIDAuxDX1RAM                     // $D000..$DFFF (Dx Bank 1)
+	bankIDAuxDX2RAM                     // $D000..$DFFF (Dx Bank 2)
+	bankIDAuxEFRAM                      // $E000..$FFFF (EF RAM)
 	bankIDAuxDisplayPage1               // $0400..$07FF (Text+LoRes page 1)
 	bankIDAuxHiRes1                     // $2000..$3FFF (HiRes page 1)
 	bankIDIOSwitches                    // $C000..$C0FF (IOU soft switches)
-	bankIDSlotROM                       // $C100..$C7FF (Periph slot ROM)
-	bankIDExpansionROM                  // $C800..$CFFF (Periph expansion ROM)
+	bankIDSlotROM                       // $C100..$C7FF (Slot ROM)
+	bankIDExpansionROM                  // $C800..$CFFF (Expansion ROM)
 
 	bankCount
 )
@@ -95,30 +87,32 @@ func newMMU() *mmu {
 	// Create all possible memory banks.
 	m.addRAMBank(bankIDMainZPS, mainRAM[0x0000:0x0200], 0x0000)
 	m.addRAMBank(bankIDMainRAM, mainRAM[0x0200:0xc000], 0x0200)
-	m.addRAMBank(bankIDMainRAMDx1, mainRAM[0xc800:0xd000], 0xd000)
-	m.addRAMBank(bankIDMainRAMDx2, mainRAM[0xd000:0xd800], 0xd000)
-	m.addRAMBank(bankIDMainRAMEF, mainRAM[0xe000:], 0xe000)
+	m.addRAMBank(bankIDMainDX1RAM, mainRAM[0xc000:0xd000], 0xd000)
+	m.addRAMBank(bankIDMainDX2RAM, mainRAM[0xd000:0xe000], 0xd000)
+	m.addRAMBank(bankIDMainEFRAM, mainRAM[0xe000:], 0xe000)
 	m.addDisplayBank(bankIDMainDisplayPage1, mainRAM[0x0400:0x0800], 0x0400)
 	m.addDisplayBank(bankIDMainDisplayPage2, mainRAM[0x0800:0x0c00], 0x0800)
 	m.addHiResBank(bankIDMainHiRes1, mainRAM[0x2000:0x4000], 0x2000)
 	m.addHiResBank(bankIDMainHiRes2, mainRAM[0x4000:0x8000], 0x4000)
-	m.addROMBank(bankIDSystemROM, systemROM[0x0000:0x4000], 0xc000)
+	m.addROMBank(bankIDSystemCXROM, systemROM[0x0100:0x1000], 0xc100)
+	m.addROMBank(bankIDSystemDEFROM, systemROM[0x1000:0x4000], 0xd000)
 	m.addIOSwitchBank(bankIDIOSwitches, 0x0100, 0xc000)
 	m.addIOSlotROMBank(bankIDSlotROM, 0x0700, 0xc100)
 	m.addIOExpansionROMBank(bankIDExpansionROM, 0x800, 0xc800)
 	m.addRAMBank(bankIDAuxZPS, mainRAM[0x0000:0x0200], 0x0000)
 	m.addRAMBank(bankIDAuxRAM, auxRAM[0x0200:0xc000], 0x0200)
-	m.addRAMBank(bankIDAuxRAMDx1, auxRAM[0xc800:0xd000], 0xd000)
-	m.addRAMBank(bankIDAuxRAMDx2, auxRAM[0xd000:0xd800], 0xd000)
-	m.addRAMBank(bankIDAuxRAMEF, auxRAM[0xe000:], 0xe000)
+	m.addRAMBank(bankIDAuxDX1RAM, auxRAM[0xc000:0xd000], 0xd000)
+	m.addRAMBank(bankIDAuxDX2RAM, auxRAM[0xd000:0xe000], 0xd000)
+	m.addRAMBank(bankIDAuxEFRAM, auxRAM[0xe000:], 0xe000)
 	m.addDisplayBank(bankIDAuxDisplayPage1, auxRAM[0x0400:0x0800], 0x0400)
 	m.addHiResBank(bankIDAuxHiRes1, auxRAM[0x2000:0x4000], 0x2000)
 
 	// Activate initial memory banks.
 	m.activateBank(bankIDMainZPS, read|write)
 	m.activateBank(bankIDMainRAM, read|write)
-	m.activateBank(bankIDSystemROM, read|write)
 	m.activateBank(bankIDMainDisplayPage1, read|write)
+	m.activateBank(bankIDSystemCXROM, read)
+	m.activateBank(bankIDSystemDEFROM, read)
 	m.activateBank(bankIDIOSwitches, read|write)
 
 	return m
@@ -252,6 +246,21 @@ func (m *mmu) setBankAccessor(bankID uint8, a bankAccessor) {
 	m.banks[bankID].accessor = a
 }
 
+// getBankAccess returns the current access (read and/or write) allowed to the
+// requested bank.
+func (m *mmu) getBankAccess(bankID uint8) access {
+	b := &m.banks[bankID]
+	p := m.pages[b.baseAddr>>8]
+	var a access
+	if p.read == b {
+		a |= read
+	}
+	if p.write == b {
+		a |= write
+	}
+	return a
+}
+
 // activateBank activates all the pages within a bank's range of virtual
 // addresses so that accesses to addresses within that range are handled
 // by the bank's accessor. Read and write access may be activated
@@ -265,18 +274,19 @@ func (m *mmu) activateBank(bankID uint8, access access) {
 	p0 := b.baseAddr >> 8
 	pn := p0 + b.size>>8
 	for p := p0; p < pn; p++ {
+		page := &m.pages[p]
 		if enableReads {
-			m.pages[p].read = b
+			page.read = b
 		}
 		if enableWrites {
-			m.pages[p].write = b
+			page.write = b
 		}
 	}
 }
 
 // deactivateBank deactivates all the pages within a bank's range of virtual
-// addresses so that accesses to addresses within that range are ignored.
-// Read and write access may be activated independently.
+// addresses so that accesses to addresses within that range are no longer
+// handled by the bank. Read and write access may be deactivated independently.
 func (m *mmu) deactivateBank(bankID uint8, access access) {
 	b := &m.banks[bankID]
 
@@ -286,11 +296,12 @@ func (m *mmu) deactivateBank(bankID uint8, access access) {
 	p0 := b.baseAddr >> 8
 	pn := p0 + b.size>>8
 	for p := p0; p < pn; p++ {
-		if disableReads {
-			m.pages[p].read = nil
+		page := &m.pages[p]
+		if disableReads && page.read == b {
+			page.read = nil
 		}
-		if disableWrites {
-			m.pages[p].write = nil
+		if disableWrites && page.write == b {
+			page.write = nil
 		}
 	}
 }

@@ -22,5 +22,10 @@ func newApple2() *apple2 {
 
 func main() {
 	apple := newApple2()
+
+	apple.mmu.LoadByte(0xc080)
+	apple.mmu.LoadByte(0xc081)
+	apple.mmu.LoadByte(0xc082)
+	apple.mmu.LoadByte(0xc083)
 	_ = apple
 }
