@@ -30,23 +30,23 @@ func TestLCSwitches(t *testing.T) {
 		{0xc08f, read | write, read | write, 0, 0},
 	}
 
-	for i, c := range cases {
+	for _, c := range cases {
 		a.mmu.LoadByte(c.addr)
 		efram := a.mmu.getBankAccess(bankIDMainEFRAM)
 		dx1ram := a.mmu.getBankAccess(bankIDMainDX1RAM)
 		dx2ram := a.mmu.getBankAccess(bankIDMainDX2RAM)
 		defrom := a.mmu.getBankAccess(bankIDSystemDEFROM)
 		if efram != c.efram {
-			t.Errorf("Case %d expected EFRAM %d, got %d\n", i, c.efram, efram)
+			t.Errorf("Switch %04x: expected EFRAM %d, got %d\n", c.addr, c.efram, efram)
 		}
 		if dx1ram != c.dx1ram {
-			t.Errorf("Case %d expected DX1RAM %d, got %d\n", i, c.dx1ram, dx1ram)
+			t.Errorf("Switch %04x: expected DX1RAM %d, got %d\n", c.addr, c.dx1ram, dx1ram)
 		}
 		if dx2ram != c.dx2ram {
-			t.Errorf("Case %d expected DX2RAM %d, got %d\n", i, c.dx2ram, dx2ram)
+			t.Errorf("Switch %04x: expected DX2RAM %d, got %d\n", c.addr, c.dx2ram, dx2ram)
 		}
 		if defrom != c.defrom {
-			t.Errorf("Case %d expected DEFROM %d, got %d\n", i, c.defrom, defrom)
+			t.Errorf("Switch %04x: expected DEFROM %d, got %d\n", c.addr, c.defrom, defrom)
 		}
 	}
 }

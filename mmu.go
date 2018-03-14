@@ -1,5 +1,7 @@
 package main
 
+import "io"
+
 // A bank represents a switchable bank of memory.
 type bank struct {
 	id       uint8  // bank ID
@@ -15,6 +17,7 @@ type bank struct {
 type bankAccessor interface {
 	LoadByte(addr uint16) byte
 	StoreByte(addr uint16, v byte)
+	CopyBytes(b []byte)
 }
 
 // Memory bank identifiers
@@ -116,6 +119,11 @@ func newMMU() *mmu {
 	m.activateBank(bankIDIOSwitches, read|write)
 
 	return m
+}
+
+func (m *mmu) LoadSystemROM(r io.Reader) error {
+	_, err := io.ReadFull(r, m.systemROM)
+	return err
 }
 
 func (m *mmu) LoadByte(addr uint16) byte {
@@ -266,11 +274,14 @@ func (m *mmu) getBankAccess(bankID uint8) access {
 // by the bank's accessor. Read and write access may be activated
 // independently.
 func (m *mmu) activateBank(bankID uint8, access access) {
-	b := &m.banks[bankID]
+	if m.getBankAccess(bankID) == access {
+		return
+	}
 
 	enableReads := (access & read) != 0
 	enableWrites := (access & write) != 0
 
+	b := &m.banks[bankID]
 	p0 := b.baseAddr >> 8
 	pn := p0 + b.size>>8
 	for p := p0; p < pn; p++ {
@@ -288,11 +299,14 @@ func (m *mmu) activateBank(bankID uint8, access access) {
 // addresses so that accesses to addresses within that range are no longer
 // handled by the bank. Read and write access may be deactivated independently.
 func (m *mmu) deactivateBank(bankID uint8, access access) {
-	b := &m.banks[bankID]
+	if m.getBankAccess(bankID) == ^access {
+		return
+	}
 
 	disableReads := (access & read) != 0
 	disableWrites := (access & write) != 0
 
+	b := &m.banks[bankID]
 	p0 := b.baseAddr >> 8
 	pn := p0 + b.size>>8
 	for p := p0; p < pn; p++ {
@@ -318,6 +332,10 @@ func (a *ramBankAccessor) StoreByte(addr uint16, v byte) {
 	a.mem[addr] = v
 }
 
+func (a *ramBankAccessor) CopyBytes(b []byte) {
+	copy(a.mem, b)
+}
+
 type romBankAccessor struct {
 	mem []byte
 }
@@ -328,6 +346,10 @@ func (a *romBankAccessor) LoadByte(addr uint16) byte {
 
 func (a *romBankAccessor) StoreByte(addr uint16, v byte) {
 	// Do nothing
+}
+
+func (a *romBankAccessor) CopyBytes(b []byte) {
+	copy(a.mem, b)
 }
 
 type displayBankAccessor struct {
@@ -342,6 +364,10 @@ func (a *displayBankAccessor) StoreByte(addr uint16, v byte) {
 	a.mem[addr] = v
 }
 
+func (a *displayBankAccessor) CopyBytes(b []byte) {
+	copy(a.mem, b)
+}
+
 type hiResBankAccessor struct {
 	mem []byte
 }
@@ -352,4 +378,8 @@ func (a *hiResBankAccessor) LoadByte(addr uint16) byte {
 
 func (a *hiResBankAccessor) StoreByte(addr uint16, v byte) {
 	a.mem[addr] = v
+}
+
+func (a *hiResBankAccessor) CopyBytes(b []byte) {
+	copy(a.mem, b)
 }

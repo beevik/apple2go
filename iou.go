@@ -1,7 +1,5 @@
 package main
 
-import "github.com/beevik/go6502"
-
 const (
 	switchAUXRAMRD  uint32 = 1 << iota // 1 = Aux RAM read enabled, 0 = main RAM read enabled
 	switchAUXRAMWRT                    // 1 = Aux RAM write enabled, 0 = main ram write enabled
@@ -16,15 +14,13 @@ const (
 
 type iou struct {
 	mmu *mmu
-	cpu *go6502.CPU
 
 	switches uint32
 }
 
-func newIOU(mmu *mmu, cpu *go6502.CPU) *iou {
+func newIOU(mmu *mmu) *iou {
 	iou := &iou{
 		mmu: mmu,
-		cpu: cpu,
 	}
 	mmu.setBankAccessor(bankIDIOSwitches, &ioSwitchBankAccessor{iou: iou})
 	return iou
@@ -47,9 +43,9 @@ func (iou *iou) setSoftSwitch(sw uint32, v bool) {
 }
 
 func (iou *iou) readSoftSwitch(addr uint16) byte {
-	switch {
+	switch addr & 0xf0 {
 	// Language card (LC) bank switching:
-	case addr >= 0x80 && addr <= 0x8f:
+	case 0x80:
 		// addr (least significant 4 bits, ignore 'z' bit)
 		// 0z00 = LCRAMRD=1 LCRAMWRT=0 LCBANK2=1
 		// 0z01 = LCRAMRD=0 LCRAMWRT=1 LCBANK2=1
@@ -76,7 +72,7 @@ func (iou *iou) writeSoftSwitch(addr uint16, v byte) {
 }
 
 // Apply soft switches to activate or deactivate memory banks in the
-// language card ($D000..$FFFF) memory range.
+// language card memory range ($D000..$FFFF).
 func (iou *iou) applyLCSwitches() {
 	mmu := iou.mmu
 
@@ -139,4 +135,8 @@ func (a *ioSwitchBankAccessor) LoadByte(addr uint16) byte {
 
 func (a *ioSwitchBankAccessor) StoreByte(addr uint16, v byte) {
 	a.iou.writeSoftSwitch(addr, v)
+}
+
+func (a *ioSwitchBankAccessor) CopyBytes(b []byte) {
+	// Do nothing
 }
