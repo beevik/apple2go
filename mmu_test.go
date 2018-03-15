@@ -32,10 +32,10 @@ func TestLCSwitches(t *testing.T) {
 
 	for _, c := range cases {
 		a.mmu.LoadByte(c.addr)
-		efram := a.mmu.getBankAccess(bankIDMainEFRAM)
-		dx1ram := a.mmu.getBankAccess(bankIDMainDX1RAM)
-		dx2ram := a.mmu.getBankAccess(bankIDMainDX2RAM)
-		defrom := a.mmu.getBankAccess(bankIDSystemDEFROM)
+		efram := a.mmu.getBankAccess(bankIDLangCardEFRAM, bankTypeMain)
+		dx1ram := a.mmu.getBankAccess(bankIDLangCardDX1RAM, bankTypeMain)
+		dx2ram := a.mmu.getBankAccess(bankIDLangCardDX2RAM, bankTypeMain)
+		defrom := a.mmu.getBankAccess(bankIDSystemDEFROM, bankTypeMain)
 		if efram != c.efram {
 			t.Errorf("Switch %04x: expected EFRAM %d, got %d\n", c.addr, c.efram, efram)
 		}

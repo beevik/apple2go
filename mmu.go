@@ -2,9 +2,40 @@ package main
 
 import "io"
 
+type bankID byte
+
+// Memory bank identifiers
+const (
+	bankIDSystemCXROM    bankID = iota // $C100..$CFFF (Cx ROM)
+	bankIDSystemDEFROM                 // $D000..$FFFF (DEF ROM)
+	bankIDZeroStackRAM                 // $0000..$01FF (ZeroPage+Stack)
+	bankIDMainRAM                      // $0200..$BFFF (Lower 48K)
+	bankIDLangCardDX1RAM               // $D000..$DFFF (Dx Bank 1)
+	bankIDLangCardDX2RAM               // $D000..$DFFF (Dx Bank 2)
+	bankIDLangCardEFRAM                // $E000..$FFFF (EF RAM)
+	bankIDDisplayPage1                 // $0400..$07FF (Text+LoRes page 1)
+	bankIDDisplayPage2                 // $0800..$0BFF (Text+LoRes page 2)
+	bankIDHiRes1                       // $2000..$3FFF (HiRes page 1)
+	bankIDHiRes2                       // $4000..$5FFF (HiRes page 2)
+	bankIDIOSwitches                   // $C000..$C0FF (IOU soft switches)
+	bankIDSlotROM                      // $C100..$C7FF (Slot ROM)
+	bankIDExpansionROM                 // $C800..$CFFF (Expansion ROM)
+
+	bankIDs
+)
+
+type bankType byte
+
+const (
+	bankTypeMain bankType = iota
+	bankTypeAux
+
+	bankTypes
+)
+
 // A bank represents a switchable bank of memory.
 type bank struct {
-	id       uint8  // bank ID
+	id       bankID // bank ID
 	size     uint16 // size of bank in bytes
 	baseAddr uint16 // base virtual address
 	accessor bankAccessor
@@ -19,33 +50,6 @@ type bankAccessor interface {
 	StoreByte(addr uint16, v byte)
 	CopyBytes(b []byte)
 }
-
-// Memory bank identifiers
-const (
-	bankIDSystemCXROM      uint8 = iota // $C100..$CFFF (Cx ROM)
-	bankIDSystemDEFROM                  // $D000..$FFFF (DEF ROM)
-	bankIDMainZPS                       // $0000..$01FF (ZeroPage+Stack)
-	bankIDMainRAM                       // $0200..$BFFF (Lower 48K)
-	bankIDMainDX1RAM                    // $D000..$DFFF (Dx Bank 1)
-	bankIDMainDX2RAM                    // $D000..$DFFF (Dx Bank 2)
-	bankIDMainEFRAM                     // $E000..$FFFF (EF RAM)
-	bankIDMainDisplayPage1              // $0400..$07FF (Text+LoRes page 1)
-	bankIDMainDisplayPage2              // $0800..$0BFF (Text+LoRes page 2)
-	bankIDMainHiRes1                    // $2000..$3FFF (HiRes page 1)
-	bankIDMainHiRes2                    // $4000..$5FFF (HiRes page 2)
-	bankIDAuxZPS                        // $0000..$01FF (ZeroPage+Stack)
-	bankIDAuxRAM                        // $0200..$BFFF (Lower 48K)
-	bankIDAuxDX1RAM                     // $D000..$DFFF (Dx Bank 1)
-	bankIDAuxDX2RAM                     // $D000..$DFFF (Dx Bank 2)
-	bankIDAuxEFRAM                      // $E000..$FFFF (EF RAM)
-	bankIDAuxDisplayPage1               // $0400..$07FF (Text+LoRes page 1)
-	bankIDAuxHiRes1                     // $2000..$3FFF (HiRes page 1)
-	bankIDIOSwitches                    // $C000..$C0FF (IOU soft switches)
-	bankIDSlotROM                       // $C100..$C7FF (Slot ROM)
-	bankIDExpansionROM                  // $C800..$CFFF (Expansion ROM)
-
-	bankCount
-)
 
 // Each memory page holds 256 bytes and can be mapped to a bank for reads
 // and a bank for writes.
@@ -70,8 +74,8 @@ type mmu struct {
 	systemROM     []byte // Holds 16K of Apple II CD/EF ROMs
 	peripheralROM []byte // Holds 4K peripheral ROM
 
-	banks [bankCount]bank // all known memory banks
-	pages [256]page       // virtual 64K address space broken into 256-byte pages
+	banks [bankTypes][bankIDs]bank // all known memory banks
+	pages [256]page                // virtual 64K address space broken into 256-byte pages
 }
 
 func newMMU() *mmu {
@@ -88,35 +92,35 @@ func newMMU() *mmu {
 	}
 
 	// Create all possible memory banks.
-	m.addRAMBank(bankIDMainZPS, mainRAM[0x0000:0x0200], 0x0000)
-	m.addRAMBank(bankIDMainRAM, mainRAM[0x0200:0xc000], 0x0200)
-	m.addRAMBank(bankIDMainDX1RAM, mainRAM[0xc000:0xd000], 0xd000)
-	m.addRAMBank(bankIDMainDX2RAM, mainRAM[0xd000:0xe000], 0xd000)
-	m.addRAMBank(bankIDMainEFRAM, mainRAM[0xe000:], 0xe000)
-	m.addDisplayBank(bankIDMainDisplayPage1, mainRAM[0x0400:0x0800], 0x0400)
-	m.addDisplayBank(bankIDMainDisplayPage2, mainRAM[0x0800:0x0c00], 0x0800)
-	m.addHiResBank(bankIDMainHiRes1, mainRAM[0x2000:0x4000], 0x2000)
-	m.addHiResBank(bankIDMainHiRes2, mainRAM[0x4000:0x8000], 0x4000)
+	m.addRAMBank(bankIDZeroStackRAM, bankTypeMain, mainRAM[0x0000:0x0200], 0x0000)
+	m.addRAMBank(bankIDMainRAM, bankTypeMain, mainRAM[0x0200:0xc000], 0x0200)
+	m.addRAMBank(bankIDLangCardDX1RAM, bankTypeMain, mainRAM[0xc000:0xd000], 0xd000)
+	m.addRAMBank(bankIDLangCardDX2RAM, bankTypeMain, mainRAM[0xd000:0xe000], 0xd000)
+	m.addRAMBank(bankIDLangCardEFRAM, bankTypeMain, mainRAM[0xe000:], 0xe000)
+	m.addDisplayBank(bankIDDisplayPage1, bankTypeMain, mainRAM[0x0400:0x0800], 0x0400)
+	m.addDisplayBank(bankIDDisplayPage2, bankTypeMain, mainRAM[0x0800:0x0c00], 0x0800)
+	m.addHiResBank(bankIDHiRes1, bankTypeMain, mainRAM[0x2000:0x4000], 0x2000)
+	m.addHiResBank(bankIDHiRes2, bankTypeMain, mainRAM[0x4000:0x8000], 0x4000)
 	m.addROMBank(bankIDSystemCXROM, systemROM[0x0100:0x1000], 0xc100)
 	m.addROMBank(bankIDSystemDEFROM, systemROM[0x1000:0x4000], 0xd000)
 	m.addIOSwitchBank(bankIDIOSwitches, 0x0100, 0xc000)
 	m.addIOSlotROMBank(bankIDSlotROM, 0x0700, 0xc100)
 	m.addIOExpansionROMBank(bankIDExpansionROM, 0x800, 0xc800)
-	m.addRAMBank(bankIDAuxZPS, mainRAM[0x0000:0x0200], 0x0000)
-	m.addRAMBank(bankIDAuxRAM, auxRAM[0x0200:0xc000], 0x0200)
-	m.addRAMBank(bankIDAuxDX1RAM, auxRAM[0xc000:0xd000], 0xd000)
-	m.addRAMBank(bankIDAuxDX2RAM, auxRAM[0xd000:0xe000], 0xd000)
-	m.addRAMBank(bankIDAuxEFRAM, auxRAM[0xe000:], 0xe000)
-	m.addDisplayBank(bankIDAuxDisplayPage1, auxRAM[0x0400:0x0800], 0x0400)
-	m.addHiResBank(bankIDAuxHiRes1, auxRAM[0x2000:0x4000], 0x2000)
+	m.addRAMBank(bankIDZeroStackRAM, bankTypeAux, mainRAM[0x0000:0x0200], 0x0000)
+	m.addRAMBank(bankIDMainRAM, bankTypeAux, auxRAM[0x0200:0xc000], 0x0200)
+	m.addRAMBank(bankIDLangCardDX1RAM, bankTypeAux, auxRAM[0xc000:0xd000], 0xd000)
+	m.addRAMBank(bankIDLangCardDX2RAM, bankTypeAux, auxRAM[0xd000:0xe000], 0xd000)
+	m.addRAMBank(bankIDLangCardEFRAM, bankTypeAux, auxRAM[0xe000:], 0xe000)
+	m.addDisplayBank(bankIDDisplayPage1, bankTypeAux, auxRAM[0x0400:0x0800], 0x0400)
+	m.addHiResBank(bankIDHiRes1, bankTypeAux, auxRAM[0x2000:0x4000], 0x2000)
 
 	// Activate initial memory banks.
-	m.activateBank(bankIDMainZPS, read|write)
-	m.activateBank(bankIDMainRAM, read|write)
-	m.activateBank(bankIDMainDisplayPage1, read|write)
-	m.activateBank(bankIDSystemCXROM, read)
-	m.activateBank(bankIDSystemDEFROM, read)
-	m.activateBank(bankIDIOSwitches, read|write)
+	m.activateBank(bankIDZeroStackRAM, bankTypeMain, read|write)
+	m.activateBank(bankIDMainRAM, bankTypeMain, read|write)
+	m.activateBank(bankIDDisplayPage1, bankTypeMain, read|write)
+	m.activateBank(bankIDSystemCXROM, bankTypeMain, read)
+	m.activateBank(bankIDSystemDEFROM, bankTypeMain, read)
+	m.activateBank(bankIDIOSwitches, bankTypeMain, read|write)
 
 	return m
 }
@@ -190,8 +194,8 @@ func (m *mmu) StoreAddress(addr, v uint16) {
 	}
 }
 
-func (m *mmu) addRAMBank(id uint8, mem []byte, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addRAMBank(id bankID, typ bankType, mem []byte, baseAddr uint16) {
+	m.banks[typ][id] = bank{
 		id:       id,
 		size:     uint16(len(mem)),
 		baseAddr: baseAddr,
@@ -199,17 +203,18 @@ func (m *mmu) addRAMBank(id uint8, mem []byte, baseAddr uint16) {
 	}
 }
 
-func (m *mmu) addROMBank(id uint8, mem []byte, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addROMBank(id bankID, mem []byte, baseAddr uint16) {
+	m.banks[bankTypeMain][id] = bank{
 		id:       id,
 		size:     uint16(len(mem)),
 		baseAddr: baseAddr,
 		accessor: &romBankAccessor{mem: mem},
 	}
+	m.banks[bankTypeAux][id] = m.banks[bankTypeMain][id]
 }
 
-func (m *mmu) addDisplayBank(id uint8, mem []byte, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addDisplayBank(id bankID, typ bankType, mem []byte, baseAddr uint16) {
+	m.banks[typ][id] = bank{
 		id:       id,
 		size:     uint16(len(mem)),
 		baseAddr: baseAddr,
@@ -217,8 +222,8 @@ func (m *mmu) addDisplayBank(id uint8, mem []byte, baseAddr uint16) {
 	}
 }
 
-func (m *mmu) addHiResBank(id uint8, mem []byte, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addHiResBank(id bankID, typ bankType, mem []byte, baseAddr uint16) {
+	m.banks[typ][id] = bank{
 		id:       id,
 		size:     uint16(len(mem)),
 		baseAddr: baseAddr,
@@ -226,38 +231,41 @@ func (m *mmu) addHiResBank(id uint8, mem []byte, baseAddr uint16) {
 	}
 }
 
-func (m *mmu) addIOSwitchBank(id uint8, size, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addIOSwitchBank(id bankID, size, baseAddr uint16) {
+	m.banks[bankTypeMain][id] = bank{
 		id:       id,
 		size:     size,
 		baseAddr: baseAddr,
 	}
+	m.banks[bankTypeAux][id] = m.banks[bankTypeMain][id]
 }
 
-func (m *mmu) addIOSlotROMBank(id uint8, size, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addIOSlotROMBank(id bankID, size, baseAddr uint16) {
+	m.banks[bankTypeMain][id] = bank{
 		id:       id,
 		size:     size,
 		baseAddr: baseAddr,
 	}
+	m.banks[bankTypeAux][id] = m.banks[bankTypeMain][id]
 }
 
-func (m *mmu) addIOExpansionROMBank(id uint8, size, baseAddr uint16) {
-	m.banks[id] = bank{
+func (m *mmu) addIOExpansionROMBank(id bankID, size, baseAddr uint16) {
+	m.banks[bankTypeMain][id] = bank{
 		id:       id,
 		size:     size,
 		baseAddr: baseAddr,
 	}
+	m.banks[bankTypeAux][id] = m.banks[bankTypeMain][id]
 }
 
-func (m *mmu) setBankAccessor(bankID uint8, a bankAccessor) {
-	m.banks[bankID].accessor = a
+func (m *mmu) setBankAccessor(id bankID, typ bankType, a bankAccessor) {
+	m.banks[typ][id].accessor = a
 }
 
 // getBankAccess returns the current access (read and/or write) allowed to the
 // requested bank.
-func (m *mmu) getBankAccess(bankID uint8) access {
-	b := &m.banks[bankID]
+func (m *mmu) getBankAccess(id bankID, typ bankType) access {
+	b := &m.banks[typ][id]
 	p := m.pages[b.baseAddr>>8]
 	var a access
 	if p.read == b {
@@ -273,15 +281,15 @@ func (m *mmu) getBankAccess(bankID uint8) access {
 // addresses so that accesses to addresses within that range are handled
 // by the bank's accessor. Read and write access may be activated
 // independently.
-func (m *mmu) activateBank(bankID uint8, access access) {
-	if m.getBankAccess(bankID) == access {
+func (m *mmu) activateBank(id bankID, typ bankType, access access) {
+	if m.getBankAccess(id, typ) == access {
 		return
 	}
 
 	enableReads := (access & read) != 0
 	enableWrites := (access & write) != 0
 
-	b := &m.banks[bankID]
+	b := &m.banks[typ][id]
 	p0 := b.baseAddr >> 8
 	pn := p0 + b.size>>8
 	for p := p0; p < pn; p++ {
@@ -298,15 +306,15 @@ func (m *mmu) activateBank(bankID uint8, access access) {
 // deactivateBank deactivates all the pages within a bank's range of virtual
 // addresses so that accesses to addresses within that range are no longer
 // handled by the bank. Read and write access may be deactivated independently.
-func (m *mmu) deactivateBank(bankID uint8, access access) {
-	if m.getBankAccess(bankID) == ^access {
+func (m *mmu) deactivateBank(id bankID, typ bankType, access access) {
+	if m.getBankAccess(id, typ) == ^access {
 		return
 	}
 
 	disableReads := (access & read) != 0
 	disableWrites := (access & write) != 0
 
-	b := &m.banks[bankID]
+	b := &m.banks[typ][id]
 	p0 := b.baseAddr >> 8
 	pn := p0 + b.size>>8
 	for p := p0; p < pn; p++ {

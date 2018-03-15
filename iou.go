@@ -22,7 +22,7 @@ func newIOU(mmu *mmu) *iou {
 	iou := &iou{
 		mmu: mmu,
 	}
-	mmu.setBankAccessor(bankIDIOSwitches, &ioSwitchBankAccessor{iou: iou})
+	mmu.setBankAccessor(bankIDIOSwitches, bankTypeMain, &ioSwitchBankAccessor{iou: iou})
 	return iou
 }
 
@@ -78,49 +78,49 @@ func (iou *iou) applyLCSwitches() {
 
 	if iou.testSoftSwitch(switchLCRAMRD) {
 		if iou.testSoftSwitch(switchAUXRAMRD) {
-			mmu.activateBank(bankIDAuxEFRAM, read)
+			mmu.activateBank(bankIDLangCardEFRAM, bankTypeAux, read)
 			if iou.testSoftSwitch(switchLCBANK2) {
-				mmu.activateBank(bankIDAuxDX2RAM, read)
+				mmu.activateBank(bankIDLangCardDX2RAM, bankTypeAux, read)
 			} else {
-				mmu.activateBank(bankIDAuxDX1RAM, read)
+				mmu.activateBank(bankIDLangCardDX1RAM, bankTypeAux, read)
 			}
 		} else {
-			mmu.activateBank(bankIDMainEFRAM, read)
+			mmu.activateBank(bankIDLangCardEFRAM, bankTypeMain, read)
 			if iou.testSoftSwitch(switchLCBANK2) {
-				mmu.activateBank(bankIDMainDX2RAM, read)
+				mmu.activateBank(bankIDLangCardDX2RAM, bankTypeMain, read)
 			} else {
-				mmu.activateBank(bankIDMainDX1RAM, read)
+				mmu.activateBank(bankIDLangCardDX1RAM, bankTypeMain, read)
 			}
 		}
 	} else {
-		mmu.activateBank(bankIDSystemDEFROM, read)
+		mmu.activateBank(bankIDSystemDEFROM, bankTypeMain, read)
 	}
 
 	if iou.testSoftSwitch(switchLCRAMWRT) {
 		if iou.testSoftSwitch(switchAUXRAMWRT) {
-			mmu.activateBank(bankIDAuxEFRAM, write)
+			mmu.activateBank(bankIDLangCardEFRAM, bankTypeAux, write)
 			if iou.testSoftSwitch(switchLCBANK2) {
-				mmu.activateBank(bankIDAuxDX2RAM, write)
+				mmu.activateBank(bankIDLangCardDX2RAM, bankTypeAux, write)
 			} else {
-				mmu.activateBank(bankIDAuxDX1RAM, write)
+				mmu.activateBank(bankIDLangCardDX1RAM, bankTypeAux, write)
 			}
 		} else {
-			mmu.activateBank(bankIDMainEFRAM, write)
+			mmu.activateBank(bankIDLangCardEFRAM, bankTypeMain, write)
 			if iou.testSoftSwitch(switchLCBANK2) {
-				mmu.activateBank(bankIDMainDX2RAM, write)
+				mmu.activateBank(bankIDLangCardDX2RAM, bankTypeMain, write)
 			} else {
-				mmu.activateBank(bankIDMainDX1RAM, write)
+				mmu.activateBank(bankIDLangCardDX1RAM, bankTypeMain, write)
 			}
 		}
 	} else {
 		if iou.testSoftSwitch(switchAUXRAMWRT) {
-			mmu.deactivateBank(bankIDAuxEFRAM, write)
-			mmu.deactivateBank(bankIDAuxDX1RAM, write)
-			mmu.deactivateBank(bankIDAuxDX2RAM, write)
+			mmu.deactivateBank(bankIDLangCardEFRAM, bankTypeAux, write)
+			mmu.deactivateBank(bankIDLangCardDX1RAM, bankTypeAux, write)
+			mmu.deactivateBank(bankIDLangCardDX2RAM, bankTypeAux, write)
 		} else {
-			mmu.deactivateBank(bankIDMainEFRAM, write)
-			mmu.deactivateBank(bankIDMainDX1RAM, write)
-			mmu.deactivateBank(bankIDMainDX2RAM, write)
+			mmu.deactivateBank(bankIDLangCardEFRAM, bankTypeMain, write)
+			mmu.deactivateBank(bankIDLangCardDX1RAM, bankTypeMain, write)
+			mmu.deactivateBank(bankIDLangCardDX2RAM, bankTypeMain, write)
 		}
 	}
 }
