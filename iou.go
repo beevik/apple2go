@@ -18,8 +18,42 @@ const (
 	ioSwitchLCRAMRD                    // 1 = LC RAM read enabled, 0 = LC ROM read enabled
 	ioSwitchLCRAMWRT                   // 1 = LC RAM write enabled, 0 = LC RAM write disabled
 	ioSwitchLCBANK2                    // 1 = LC RAM bank 2 enabled, 0 = LC RAM bank 1 enabled
+	ioSwitchCXROM                      // 1 = using internal slot ROM, 0 = not using
+	ioSwitchC3ROM                      // 1 = using slot 3 ROM, 0 = not using
 	ioSwitchVBL                        // read vertical blanking
+
+	ioSwitches
 )
+
+var switchGetC010 = []ioSwitch{
+	ioSwitches,         // c010 (invalid)
+	ioSwitchLCBANK2,    // c011
+	ioSwitchLCRAMRD,    // c012
+	ioSwitchAUXRAMRD,   // c013
+	ioSwitchAUXRAMWRT,  // c014
+	ioSwitchCXROM,      // c015
+	ioSwitchALTZP,      // c016
+	ioSwitchC3ROM,      // c017
+	ioSwitch80STORE,    // c018
+	ioSwitchVBL,        // c019
+	ioSwitchTEXT,       // c01a
+	ioSwitchMIXED,      // c01b
+	ioSwitchPAGE2,      // c01c
+	ioSwitchHIRES,      // c01d
+	ioSwitchALTCHARSET, // c01e
+	ioSwitch80COL,      // c01f
+}
+
+var switchSetC000 = []ioSwitch{
+	ioSwitch80STORE,    // c000..c001
+	ioSwitchAUXRAMRD,   // c002..c003
+	ioSwitchAUXRAMWRT,  // c004..c005
+	ioSwitchCXROM,      // c006..c007
+	ioSwitchALTZP,      // c008..c009
+	ioSwitchC3ROM,      // c00a..c00b
+	ioSwitch80COL,      // c00c..c00d
+	ioSwitchALTCHARSET, // c00e..c00f
+}
 
 const (
 	updateSystemRAM uint32 = 1 << iota // update lower 48K memory banks (except ZPS)
@@ -43,6 +77,8 @@ var switchUpdates = []uint32{
 	updateLCRAM,     // ioSwitchLCRAMRD
 	updateLCRAM,     // ioSwitchLCRAMWRT
 	updateLCRAM,     // ioSwitchLCBANK2
+	0,               // ioSwitchCXROM
+	0,               // ioSwitchC3ROM
 	0,               // ioSwitchVBL
 }
 
@@ -95,22 +131,9 @@ func (iou *iou) readSoftSwitch(addr uint16) byte {
 
 	switch addr & 0xf0 {
 	case 0x10:
-		switch addr {
-		case 0x13:
-			ret = iou.getSoftSwitch(ioSwitchAUXRAMRD)
-		case 0x14:
-			ret = iou.getSoftSwitch(ioSwitchAUXRAMWRT)
-		case 0x16:
-			ret = iou.getSoftSwitch(ioSwitchALTZP)
-		case 0x18:
-			ret = iou.getSoftSwitch(ioSwitch80STORE)
-		case 0x1c:
-			ret = iou.getSoftSwitch(ioSwitchPAGE2)
-		case 0x1d:
-			ret = iou.getSoftSwitch(ioSwitchHIRES)
-		}
+		sw := switchGetC010[addr-0x10]
+		ret = iou.getSoftSwitch(sw)
 
-		// Language card (LC) bank switching:
 	case 0x80:
 		// addr (least significant 4 bits, ignore 'z' bit)
 		// 0z00 = LCRAMRD=1 LCRAMWRT=0 LCBANK2=1
@@ -138,26 +161,20 @@ func (iou *iou) readSoftSwitch(addr uint16) byte {
 func (iou *iou) writeSoftSwitch(addr uint16, v byte) {
 	switch addr & 0xf0 {
 	case 0x00:
-		switch addr {
-		case 0x00:
-			iou.setSoftSwitch(ioSwitch80STORE, false)
-		case 0x01:
-			iou.setSoftSwitch(ioSwitch80STORE, true)
-		case 0x02:
-			iou.setSoftSwitch(ioSwitchAUXRAMRD, false)
-		case 0x03:
-			iou.setSoftSwitch(ioSwitchAUXRAMRD, true)
-		case 0x04:
-			iou.setSoftSwitch(ioSwitchAUXRAMWRT, false)
-		case 0x05:
-			iou.setSoftSwitch(ioSwitchAUXRAMWRT, true)
-		case 0x08:
-			iou.setSoftSwitch(ioSwitchALTZP, false)
-		case 0x09:
-			iou.setSoftSwitch(ioSwitchALTZP, true)
-		}
+		sw := switchSetC000[addr>>1] // sequence is:
+		v := (addr & 1) == 0         //  sw1, false, sw1, true,
+		iou.setSoftSwitch(sw, v)     //  sw2, false, sw2, true, etc.
+
 	case 0x50:
 		switch addr {
+		case 0x50:
+			iou.setSoftSwitch(ioSwitchTEXT, false)
+		case 0x51:
+			iou.setSoftSwitch(ioSwitchTEXT, true)
+		case 0x52:
+			iou.setSoftSwitch(ioSwitchMIXED, false)
+		case 0x53:
+			iou.setSoftSwitch(ioSwitchMIXED, true)
 		case 0x54:
 			iou.setSoftSwitch(ioSwitchPAGE2, false)
 		case 0x55:
@@ -166,6 +183,22 @@ func (iou *iou) writeSoftSwitch(addr uint16, v byte) {
 			iou.setSoftSwitch(ioSwitchHIRES, false)
 		case 0x57:
 			iou.setSoftSwitch(ioSwitchHIRES, true)
+		case 0x5e:
+			if iou.testSoftSwitch(ioSwitchIOUDIS) {
+				iou.setSoftSwitch(ioSwitchDHIRES, true)
+			}
+		case 0x5f:
+			if iou.testSoftSwitch(ioSwitchIOUDIS) {
+				iou.setSoftSwitch(ioSwitchDHIRES, false)
+			}
+		}
+
+	case 0x70:
+		switch addr {
+		case 0x7e:
+			iou.setSoftSwitch(ioSwitchIOUDIS, false)
+		case 0x7f:
+			iou.setSoftSwitch(ioSwitchIOUDIS, true)
 		}
 	}
 
