@@ -3,29 +3,33 @@ package main
 type ioSwitch uint8
 
 const (
-	ioSwitchAUXRAMRD   ioSwitch = iota // 1 = Aux RAM read enabled, 0 = main RAM read enabled
-	ioSwitchAUXRAMWRT                  // 1 = Aux RAM write enabled, 0 = main ram write enabled
-	ioSwitchALTCHARSET                 // 1 = Alt char set on, 0 = off
-	ioSwitchTEXT                       // 1 = text mode on, 0 = off
-	ioSwitchMIXED                      // 1 = mixed mode on, 0 = off
-	ioSwitch80COL                      // 1 = 80 column mode on, 0 = off
-	ioSwitch80STORE                    // 1 = $0200..$BFFF ignores RAMRD/RAMWRT, 0 = $0200..$BFFF controlled by RAMRD/RAMWRT
-	ioSwitchPAGE2                      // If 80STORE is 1: 1 = Aux Display page 2 enabled, 0 = Main display page 2 enabled
-	ioSwitchHIRES                      // If 80STORE is 1: 1 = Aux HiRes page enabled, 0 = Main HiRes page enabled
-	ioSwitchDHIRES                     // 1 = double hires on, 0 = off
-	ioSwitchIOUDIS                     // 1 = disable C058..C05F, enable DHIRES. 0=opposite
-	ioSwitchALTZP                      // 1 = Aux ZP+stack, 0 = Main ZP+stack
-	ioSwitchLCRAMRD                    // 1 = LC RAM read enabled, 0 = LC ROM read enabled
-	ioSwitchLCRAMWRT                   // 1 = LC RAM write enabled, 0 = LC RAM write disabled
-	ioSwitchLCBANK2                    // 1 = LC RAM bank 2 enabled, 0 = LC RAM bank 1 enabled
-	ioSwitchCXROM                      // 1 = using internal slot ROM, 0 = not using
-	ioSwitchC3ROM                      // 1 = using slot 3 ROM, 0 = not using
-	ioSwitchVBL                        // read vertical blanking
+	ioSwitchAUXRAMRD     ioSwitch = iota // 1 = Aux RAM read enabled, 0 = main RAM read enabled
+	ioSwitchAUXRAMWRT                    // 1 = Aux RAM write enabled, 0 = main ram write enabled
+	ioSwitchALTCHARSET                   // 1 = Alt char set on, 0 = off
+	ioSwitchTEXT                         // 1 = text mode on, 0 = off
+	ioSwitchMIXED                        // 1 = mixed mode on, 0 = off
+	ioSwitch80COL                        // 1 = 80 column mode on, 0 = off
+	ioSwitch80STORE                      // 1 = $0200..$BFFF ignores RAMRD/RAMWRT, 0 = $0200..$BFFF controlled by RAMRD/RAMWRT
+	ioSwitchPAGE2                        // If 80STORE is 1: 1 = Aux Display page 2 enabled, 0 = Main display page 2 enabled
+	ioSwitchHIRES                        // If 80STORE is 1: 1 = Aux HiRes page enabled, 0 = Main HiRes page enabled
+	ioSwitchDHIRES                       // 1 = double hires on, 0 = off
+	ioSwitchIOUDIS                       // 1 = disable C058..C05F, enable DHIRES. 0=opposite
+	ioSwitchALTZP                        // 1 = Aux ZP+stack, 0 = Main ZP+stack
+	ioSwitchLCRAMRD                      // 1 = LC RAM read enabled, 0 = LC ROM read enabled
+	ioSwitchLCRAMWRT                     // 1 = LC RAM write enabled, 0 = LC RAM write disabled
+	ioSwitchLCBANK2                      // 1 = LC RAM bank 2 enabled, 0 = LC RAM bank 1 enabled
+	ioSwitchCXROM                        // 1 = using internal slot ROM, 0 = not using
+	ioSwitchC3ROM                        // 1 = using slot 3 ROM, 0 = not using
+	ioSwitchVBLINT                       // read vertical blanking
+	ioSwitchANNUNCIATOR0                 // 1 = hand control annunciator 0 on, 0 = off
+	ioSwitchANNUNCIATOR1                 // 1 = hand control annunciator 1 on, 0 = off
+	ioSwitchANNUNCIATOR2                 // 1 = hand control annunciator 2 on, 0 = off
+	ioSwitchANNUNCIATOR3                 // 1 = hand control annunciator 3 on, 0 = off
 
 	ioSwitches
 )
 
-var switchGetC010 = []ioSwitch{
+var switchReadC01x = []ioSwitch{
 	ioSwitches,         // c010 (invalid)
 	ioSwitchLCBANK2,    // c011
 	ioSwitchLCRAMRD,    // c012
@@ -35,7 +39,7 @@ var switchGetC010 = []ioSwitch{
 	ioSwitchALTZP,      // c016
 	ioSwitchC3ROM,      // c017
 	ioSwitch80STORE,    // c018
-	ioSwitchVBL,        // c019
+	ioSwitchVBLINT,     // c019
 	ioSwitchTEXT,       // c01a
 	ioSwitchMIXED,      // c01b
 	ioSwitchPAGE2,      // c01c
@@ -44,7 +48,7 @@ var switchGetC010 = []ioSwitch{
 	ioSwitch80COL,      // c01f
 }
 
-var switchSetC000 = []ioSwitch{
+var switchWriteC00x = []ioSwitch{
 	ioSwitch80STORE,    // c000..c001
 	ioSwitchAUXRAMRD,   // c002..c003
 	ioSwitchAUXRAMWRT,  // c004..c005
@@ -58,7 +62,7 @@ var switchSetC000 = []ioSwitch{
 const (
 	updateSystemRAM uint32 = 1 << iota // update lower 48K memory banks (except ZPS)
 	updateZPSRAM                       // update zero and stack pages
-	updateLCRAM                        // update upper 16K memory  banks
+	updateLCRAM                        // update upper 16K memory banks
 )
 
 var switchUpdates = []uint32{
@@ -79,7 +83,11 @@ var switchUpdates = []uint32{
 	updateLCRAM,     // ioSwitchLCBANK2
 	0,               // ioSwitchCXROM
 	0,               // ioSwitchC3ROM
-	0,               // ioSwitchVBL
+	0,               // ioSwitchVBLINT
+	0,               // ioSwitchANNUNCIATOR0
+	0,               // ioSwitchANNUNCIATOR1
+	0,               // ioSwitchANNUNCIATOR2
+	0,               // ioSwitchANNUNCIATOR3
 }
 
 type iou struct {
@@ -131,8 +139,20 @@ func (iou *iou) readSoftSwitch(addr uint16) byte {
 
 	switch addr & 0xf0 {
 	case 0x10:
-		sw := switchGetC010[addr-0x10]
+		sw := switchReadC01x[addr-0x10]
 		ret = iou.getSoftSwitch(sw)
+
+	case 0x50:
+		ret = iou.onSwitchC05x(addr)
+
+	case 0x70:
+		switch addr {
+		case 0x7e:
+			ret = iou.getSoftSwitch(ioSwitchIOUDIS)
+		case 0x7f:
+			ret = iou.getSoftSwitch(ioSwitchDHIRES)
+		}
+		iou.setSoftSwitch(ioSwitchVBLINT, false)
 
 	case 0x80:
 		// addr (least significant 4 bits, ignore 'z' bit)
@@ -161,37 +181,12 @@ func (iou *iou) readSoftSwitch(addr uint16) byte {
 func (iou *iou) writeSoftSwitch(addr uint16, v byte) {
 	switch addr & 0xf0 {
 	case 0x00:
-		sw := switchSetC000[addr>>1] // sequence is:
-		v := (addr & 1) == 0         //  sw1, false, sw1, true,
-		iou.setSoftSwitch(sw, v)     //  sw2, false, sw2, true, etc.
+		sw := switchWriteC00x[addr>>1] // sequence is:
+		v := (addr & 1) == 1           //  sw1, false, sw1, true,
+		iou.setSoftSwitch(sw, v)       //  sw2, false, sw2, true, etc.
 
 	case 0x50:
-		switch addr {
-		case 0x50:
-			iou.setSoftSwitch(ioSwitchTEXT, false)
-		case 0x51:
-			iou.setSoftSwitch(ioSwitchTEXT, true)
-		case 0x52:
-			iou.setSoftSwitch(ioSwitchMIXED, false)
-		case 0x53:
-			iou.setSoftSwitch(ioSwitchMIXED, true)
-		case 0x54:
-			iou.setSoftSwitch(ioSwitchPAGE2, false)
-		case 0x55:
-			iou.setSoftSwitch(ioSwitchPAGE2, true)
-		case 0x56:
-			iou.setSoftSwitch(ioSwitchHIRES, false)
-		case 0x57:
-			iou.setSoftSwitch(ioSwitchHIRES, true)
-		case 0x5e:
-			if iou.testSoftSwitch(ioSwitchIOUDIS) {
-				iou.setSoftSwitch(ioSwitchDHIRES, true)
-			}
-		case 0x5f:
-			if iou.testSoftSwitch(ioSwitchIOUDIS) {
-				iou.setSoftSwitch(ioSwitchDHIRES, false)
-			}
-		}
+		iou.onSwitchC05x(addr)
 
 	case 0x70:
 		switch addr {
@@ -203,6 +198,64 @@ func (iou *iou) writeSoftSwitch(addr uint16, v byte) {
 	}
 
 	iou.applySwitchUpdates()
+}
+
+func (iou *iou) onSwitchC05x(addr uint16) byte {
+	switch addr {
+	case 0x50:
+		iou.setSoftSwitch(ioSwitchTEXT, false)
+	case 0x51:
+		iou.setSoftSwitch(ioSwitchTEXT, true)
+	case 0x52:
+		iou.setSoftSwitch(ioSwitchMIXED, false)
+	case 0x53:
+		iou.setSoftSwitch(ioSwitchMIXED, true)
+	case 0x54:
+		iou.setSoftSwitch(ioSwitchPAGE2, false)
+	case 0x55:
+		iou.setSoftSwitch(ioSwitchPAGE2, true)
+	case 0x56:
+		iou.setSoftSwitch(ioSwitchHIRES, false)
+	case 0x57:
+		iou.setSoftSwitch(ioSwitchHIRES, true)
+	case 0x58:
+		if !iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR0, false)
+		}
+	case 0x59:
+		if !iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR0, true)
+		}
+	case 0x5a:
+		if !iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR1, false)
+		}
+	case 0x5b:
+		if !iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR1, true)
+		}
+	case 0x5c:
+		if !iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR2, false)
+		}
+	case 0x5d:
+		if !iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR2, true)
+		}
+	case 0x5e:
+		if iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchDHIRES, true)
+		} else {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR3, false)
+		}
+	case 0x5f:
+		if iou.testSoftSwitch(ioSwitchIOUDIS) {
+			iou.setSoftSwitch(ioSwitchDHIRES, false)
+		} else {
+			iou.setSoftSwitch(ioSwitchANNUNCIATOR3, true)
+		}
+	}
+	return 0xa0
 }
 
 func (iou *iou) applySwitchUpdates() {
