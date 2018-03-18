@@ -12,8 +12,8 @@ const (
 	ioSwitch80STORE                      // 1 = $0200..$BFFF ignores RAMRD/RAMWRT, 0 = $0200..$BFFF controlled by RAMRD/RAMWRT
 	ioSwitchPAGE2                        // If 80STORE is 1: 1 = Aux Display page 2 enabled, 0 = Main display page 2 enabled
 	ioSwitchHIRES                        // If 80STORE is 1: 1 = Aux HiRes page enabled, 0 = Main HiRes page enabled
-	ioSwitchDHIRES                       // 1 = double hires on, 0 = off
-	ioSwitchIOUDIS                       // 1 = disable C058..C05F, enable DHIRES. 0=opposite
+	ioSwitchDHIRES                       // If IOUDIS is 1: 1 = double hires on, 0 = off
+	ioSwitchIOUDIS                       // 1 = disable C058..C05F, allow DHIRES. 0=opposite
 	ioSwitchALTZP                        // 1 = Aux ZP+stack, 0 = Main ZP+stack
 	ioSwitchLCRAMRD                      // 1 = LC RAM read enabled, 0 = LC ROM read enabled
 	ioSwitchLCRAMWRT                     // 1 = LC RAM write enabled, 0 = LC RAM write disabled
@@ -21,10 +21,10 @@ const (
 	ioSwitchCXROM                        // 1 = using internal slot ROM, 0 = not using
 	ioSwitchC3ROM                        // 1 = using slot 3 ROM, 0 = not using
 	ioSwitchVBLINT                       // read vertical blanking
-	ioSwitchANNUNCIATOR0                 // 1 = hand control annunciator 0 on, 0 = off
-	ioSwitchANNUNCIATOR1                 // 1 = hand control annunciator 1 on, 0 = off
-	ioSwitchANNUNCIATOR2                 // 1 = hand control annunciator 2 on, 0 = off
-	ioSwitchANNUNCIATOR3                 // 1 = hand control annunciator 3 on, 0 = off
+	ioSwitchANNUNCIATOR0                 // if IOUDIS is 0: 1 = hand control annunciator 0 on, 0 = off
+	ioSwitchANNUNCIATOR1                 // if IOUDIS is 0: 1 = hand control annunciator 1 on, 0 = off
+	ioSwitchANNUNCIATOR2                 // if IOUDIS is 0: 1 = hand control annunciator 2 on, 0 = off
+	ioSwitchANNUNCIATOR3                 // if IOUDIS is 0: 1 = hand control annunciator 3 on, 0 = off
 
 	ioSwitches
 )
@@ -71,12 +71,12 @@ func newIOU(mmu *mmu) *iou {
 	iou := &iou{
 		mmu: mmu,
 	}
-	mmu.setBankAccessor(bankIOSwitches, bankTypeMain, &ioSwitchBankAccessor{iou: iou})
-	return iou
-}
 
-func bitTest16(v uint16, mask uint16) bool {
-	return (v & mask) != 0
+	// Assign a memory accessor to the IO switches bank.
+	b := mmu.GetBank(bankIOSwitches, bankTypeMain)
+	b.accessor = &ioSwitchBankAccessor{iou: iou}
+
+	return iou
 }
 
 func (iou *iou) testSoftSwitch(sw ioSwitch) bool {
@@ -298,9 +298,9 @@ func (iou *iou) applyZPSRAMSwitches() {
 	mmu := iou.mmu
 
 	if iou.testSoftSwitch(ioSwitchALTZP) {
-		mmu.activateBank(bankZeroStackRAM, bankTypeAux, read|write)
+		mmu.ActivateBank(bankZeroStackRAM, bankTypeAux, read|write)
 	} else {
-		mmu.activateBank(bankZeroStackRAM, bankTypeMain, read|write)
+		mmu.ActivateBank(bankZeroStackRAM, bankTypeMain, read|write)
 	}
 }
 
@@ -310,21 +310,21 @@ func (iou *iou) applySystemRAMSwitches() {
 	btr := iou.selectBankType(ioSwitchAUXRAMRD, bankTypeAux, bankTypeMain)
 	btw := iou.selectBankType(ioSwitchAUXRAMWRT, bankTypeAux, bankTypeMain)
 
-	mmu.activateBank(bankMainRAM, btr, read)
-	mmu.activateBank(bankMainRAM, btw, write)
+	mmu.ActivateBank(bankMainRAM, btr, read)
+	mmu.ActivateBank(bankMainRAM, btw, write)
 
 	if iou.testSoftSwitch(ioSwitch80STORE) {
 		bt := iou.selectBankType(ioSwitchPAGE2, bankTypeAux, bankTypeMain)
-		mmu.activateBank(bankDisplayPage1, bt, read|write)
+		mmu.ActivateBank(bankDisplayPage1, bt, read|write)
 		if iou.testSoftSwitch(ioSwitchHIRES) {
-			mmu.activateBank(bankHiRes1, bt, read|write)
+			mmu.ActivateBank(bankHiRes1, bt, read|write)
 		}
 	} else {
 		dp := iou.selectBank(ioSwitchPAGE2, bankDisplayPage2, bankDisplayPage1)
-		mmu.activateBank(dp, bankTypeMain, read|write)
+		mmu.ActivateBank(dp, bankTypeMain, read|write)
 		if iou.testSoftSwitch(ioSwitchHIRES) {
 			hi := iou.selectBank(ioSwitchPAGE2, bankHiRes2, bankHiRes1)
-			mmu.activateBank(hi, bankTypeMain, read|write)
+			mmu.ActivateBank(hi, bankTypeMain, read|write)
 		}
 	}
 }
@@ -337,17 +337,17 @@ func (iou *iou) applyLCRAMSwitches() {
 	lcbank := iou.selectBank(ioSwitchLCBANK2, bankLangCardDX2RAM, bankLangCardDX1RAM)
 
 	if iou.testSoftSwitch(ioSwitchLCRAMRD) {
-		mmu.activateBank(bankLangCardEFRAM, btr, read)
-		mmu.activateBank(lcbank, btr, read)
+		mmu.ActivateBank(bankLangCardEFRAM, btr, read)
+		mmu.ActivateBank(lcbank, btr, read)
 	} else {
-		mmu.activateBank(bankSystemDEFROM, bankTypeMain, read)
+		mmu.ActivateBank(bankSystemDEFROM, bankTypeMain, read)
 	}
 
 	if iou.testSoftSwitch(ioSwitchLCRAMWRT) {
-		mmu.activateBank(bankLangCardEFRAM, btw, write)
-		mmu.activateBank(lcbank, btw, write)
+		mmu.ActivateBank(bankLangCardEFRAM, btw, write)
+		mmu.ActivateBank(lcbank, btw, write)
 	} else {
-		mmu.activateBank(bankSystemDEFROM, bankTypeMain, write)
+		mmu.ActivateBank(bankSystemDEFROM, bankTypeMain, write)
 	}
 }
 

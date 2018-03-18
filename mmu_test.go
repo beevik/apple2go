@@ -78,10 +78,10 @@ func TestReadC08xSwitches(t *testing.T) {
 			t.Errorf("Switch %04x: expected LCBANK2 to be %v\n", c.setAddr, c.rdbnk2)
 		}
 
-		efram := a.mmu.getBankAccess(bankLangCardEFRAM, bankTypeMain)
-		dx1ram := a.mmu.getBankAccess(bankLangCardDX1RAM, bankTypeMain)
-		dx2ram := a.mmu.getBankAccess(bankLangCardDX2RAM, bankTypeMain)
-		defrom := a.mmu.getBankAccess(bankSystemDEFROM, bankTypeMain)
+		efram := a.mmu.GetBankAccess(bankLangCardEFRAM, bankTypeMain)
+		dx1ram := a.mmu.GetBankAccess(bankLangCardDX1RAM, bankTypeMain)
+		dx2ram := a.mmu.GetBankAccess(bankLangCardDX2RAM, bankTypeMain)
+		defrom := a.mmu.GetBankAccess(bankSystemDEFROM, bankTypeMain)
 		if efram != c.efram {
 			t.Errorf("Switch %04x: expected EFRAM %d, got %d\n", c.setAddr, c.efram, efram)
 		}
