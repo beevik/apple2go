@@ -68,8 +68,8 @@ func TestReadC08xSwitches(t *testing.T) {
 	for _, c := range cases {
 		a.mmu.LoadByte(c.setAddr)
 
-		rdlcram := (a.iou.getSoftSwitch(ioSwitchLCRAMRD) & 0x80) != 0
-		rdbnk2 := (a.iou.getSoftSwitch(ioSwitchLCBANK2) & 0x80) != 0
+		rdlcram := (a.iou.getSoftSwitchBit7(ioSwitchLCRAMRD) & 0x80) != 0
+		rdbnk2 := (a.iou.getSoftSwitchBit7(ioSwitchLCBANK2) & 0x80) != 0
 
 		if c.rdlcram != rdlcram {
 			t.Errorf("Switch %04x: expected LCRAMRD to be %v\n", c.setAddr, c.rdlcram)

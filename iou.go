@@ -29,36 +29,6 @@ const (
 	ioSwitches
 )
 
-var switchReadC01x = []ioSwitch{
-	ioSwitches,         // c010 (invalid)
-	ioSwitchLCBANK2,    // c011
-	ioSwitchLCRAMRD,    // c012
-	ioSwitchAUXRAMRD,   // c013
-	ioSwitchAUXRAMWRT,  // c014
-	ioSwitchCXROM,      // c015
-	ioSwitchALTZP,      // c016
-	ioSwitchC3ROM,      // c017
-	ioSwitch80STORE,    // c018
-	ioSwitchVBLINT,     // c019
-	ioSwitchTEXT,       // c01a
-	ioSwitchMIXED,      // c01b
-	ioSwitchPAGE2,      // c01c
-	ioSwitchHIRES,      // c01d
-	ioSwitchALTCHARSET, // c01e
-	ioSwitch80COL,      // c01f
-}
-
-var switchWriteC00x = []ioSwitch{
-	ioSwitch80STORE,    // c000..c001
-	ioSwitchAUXRAMRD,   // c002..c003
-	ioSwitchAUXRAMWRT,  // c004..c005
-	ioSwitchCXROM,      // c006..c007
-	ioSwitchALTZP,      // c008..c009
-	ioSwitchC3ROM,      // c00a..c00b
-	ioSwitch80COL,      // c00c..c00d
-	ioSwitchALTCHARSET, // c00e..c00f
-}
-
 const (
 	updateSystemRAM uint32 = 1 << iota // update lower 48K memory banks (except ZPS)
 	updateZPSRAM                       // update zero and stack pages
@@ -66,28 +36,28 @@ const (
 )
 
 var switchUpdates = []uint32{
-	updateSystemRAM | updateLCRAM, // ioSwitchAUXRAMRD
-	updateSystemRAM | updateLCRAM, // ioSwitchAUXRAMWRT
-	0,               // ioSwitchALTCHARSET
-	0,               // ioSwitchTEXT
-	0,               // ioSwitchMIXED
-	0,               // ioSwitch80COL
-	updateSystemRAM, // ioSwitch80STORE
-	updateSystemRAM, // ioSwitchPAGE2
-	updateSystemRAM, // ioSwitchHIRES
-	0,               // ioSwitchDHIRES
-	0,               // ioSwitchIOUDIS
-	updateZPSRAM,    // ioSwitchALTZP
-	updateLCRAM,     // ioSwitchLCRAMRD
-	updateLCRAM,     // ioSwitchLCRAMWRT
-	updateLCRAM,     // ioSwitchLCBANK2
-	0,               // ioSwitchCXROM
-	0,               // ioSwitchC3ROM
-	0,               // ioSwitchVBLINT
-	0,               // ioSwitchANNUNCIATOR0
-	0,               // ioSwitchANNUNCIATOR1
-	0,               // ioSwitchANNUNCIATOR2
-	0,               // ioSwitchANNUNCIATOR3
+	/* ioSwitchAUXRAMRD     */ updateSystemRAM | updateLCRAM,
+	/* ioSwitchAUXRAMWRT    */ updateSystemRAM | updateLCRAM,
+	/* ioSwitchALTCHARSET   */ 0,
+	/* ioSwitchTEXT         */ 0,
+	/* ioSwitchMIXED        */ 0,
+	/* ioSwitch80COL        */ 0,
+	/* ioSwitch80STORE      */ updateSystemRAM,
+	/* ioSwitchPAGE2   	    */ updateSystemRAM,
+	/* ioSwitchHIRES        */ updateSystemRAM,
+	/* ioSwitchDHIRES       */ 0,
+	/* ioSwitchIOUDIS       */ 0,
+	/* ioSwitchALTZP        */ updateZPSRAM,
+	/* ioSwitchLCRAMRD      */ updateLCRAM,
+	/* ioSwitchLCRAMWRT     */ updateLCRAM,
+	/* ioSwitchLCBANK2      */ updateLCRAM,
+	/* ioSwitchCXROM        */ 0,
+	/* ioSwitchC3ROM        */ 0,
+	/* ioSwitchVBLINT       */ 0,
+	/* ioSwitchANNUNCIATOR0 */ 0,
+	/* ioSwitchANNUNCIATOR1 */ 0,
+	/* ioSwitchANNUNCIATOR2 */ 0,
+	/* ioSwitchANNUNCIATOR3 */ 0,
 }
 
 type iou struct {
@@ -113,7 +83,7 @@ func (iou *iou) testSoftSwitch(sw ioSwitch) bool {
 	return (iou.switches & (1 << sw)) != 0
 }
 
-func (iou *iou) getSoftSwitch(sw ioSwitch) byte {
+func (iou *iou) getSoftSwitchBit7(sw ioSwitch) byte {
 	if (iou.switches & (1 << sw)) != 0 {
 		return 0x80
 	}
@@ -134,73 +104,70 @@ func (iou *iou) setSoftSwitch(sw ioSwitch, v bool) {
 	}
 }
 
-func (iou *iou) readSoftSwitch(addr uint16) byte {
-	var ret byte
-
-	switch addr & 0xf0 {
-	case 0x10:
-		sw := switchReadC01x[addr-0x10]
-		ret = iou.getSoftSwitch(sw)
-
-	case 0x50:
-		ret = iou.onSwitchC05x(addr)
-
-	case 0x70:
-		switch addr {
-		case 0x7e:
-			ret = iou.getSoftSwitch(ioSwitchIOUDIS)
-		case 0x7f:
-			ret = iou.getSoftSwitch(ioSwitchDHIRES)
-		}
-		iou.setSoftSwitch(ioSwitchVBLINT, false)
-
-	case 0x80:
-		// addr (least significant 4 bits, ignore 'z' bit)
-		// 0z00 = LCRAMRD=1 LCRAMWRT=0 LCBANK2=1
-		// 0z01 = LCRAMRD=0 LCRAMWRT=1 LCBANK2=1
-		// 0z10 = LCRAMRD=0 LCRAMWRT=0 LCBANK2=1
-		// 0z11 = LCRAMRD=1 LCRAMWRT=1 LCBANK2=1 (RR)
-		// 1z00 = LCRAMRD=1 LCRAMWRT=0 LCBANK2=0
-		// 1z01 = LCRAMRD=0 LCRAMWRT=1 LCBANK2=0
-		// 1z10 = LCRAMRD=0 LCRAMWRT=0 LCBANK2=0
-		// 1z11 = LCRAMRD=1 LCRAMWRT=1 LCBANK2=0 (RR)
-		// ----
-		// LCRAMRD  = !(bit0 ^ bit1)
-		// LCRAMWRT = bit 0
-		// LCBANK2  = !(bit 3)
-		iou.setSoftSwitch(ioSwitchLCRAMRD, !bitTest16(addr^(addr>>1), 1<<0))
-		iou.setSoftSwitch(ioSwitchLCRAMWRT, bitTest16(addr, 1<<0))
-		iou.setSoftSwitch(ioSwitchLCBANK2, !bitTest16(addr, 1<<3))
-		ret = 0xa0
-	}
-
-	iou.applySwitchUpdates()
-	return ret
+var switchBank = []struct {
+	read  func(iou *iou, addr uint16) byte
+	write func(iou *iou, addr uint16)
+}{
+	/* c00x */ {write: (*iou).onSwitchWriteC00x},
+	/* c01x */ {read: (*iou).onSwitchReadC01x},
+	/* c02x */ {},
+	/* c03x */ {},
+	/* c04x */ {},
+	/* c05x */ {read: (*iou).onSwitchReadC05x, write: (*iou).onSwitchWriteC05x},
+	/* c06x */ {},
+	/* c07x */ {write: (*iou).onSwitchWriteC07x},
+	/* c08x */ {read: (*iou).onSwitchReadC08x},
 }
 
-func (iou *iou) writeSoftSwitch(addr uint16, v byte) {
-	switch addr & 0xf0 {
-	case 0x00:
-		sw := switchWriteC00x[addr>>1] // sequence is:
-		v := (addr & 1) == 1           //  sw1, false, sw1, true,
-		iou.setSoftSwitch(sw, v)       //  sw2, false, sw2, true, etc.
-
-	case 0x50:
-		iou.onSwitchC05x(addr)
-
-	case 0x70:
-		switch addr {
-		case 0x7e:
-			iou.setSoftSwitch(ioSwitchIOUDIS, false)
-		case 0x7f:
-			iou.setSoftSwitch(ioSwitchIOUDIS, true)
-		}
-	}
-
-	iou.applySwitchUpdates()
+var switchWriteC00x = []ioSwitch{
+	/* c000..c001 */ ioSwitch80STORE,
+	/* c002..c003 */ ioSwitchAUXRAMRD,
+	/* c004..c005 */ ioSwitchAUXRAMWRT,
+	/* c006..c007 */ ioSwitchCXROM,
+	/* c008..c009 */ ioSwitchALTZP,
+	/* c00a..c00b */ ioSwitchC3ROM,
+	/* c00c..c00d */ ioSwitch80COL,
+	/* c00e..c00f */ ioSwitchALTCHARSET,
 }
 
-func (iou *iou) onSwitchC05x(addr uint16) byte {
+func (iou *iou) onSwitchWriteC00x(addr uint16) {
+	// Sequence:
+	//  addr0: switch1 OFF
+	//  addr1: switch1 ON
+	//  addr2: switch2 OFF
+	//  addr3: switch2 ON
+	//  ...etc.
+
+	sw := switchWriteC00x[addr>>1]
+	v := (addr & 1) == 1
+	iou.setSoftSwitch(sw, v)
+}
+
+var switchReadC01x = []ioSwitch{
+	ioSwitches,         // c010 (invalid)
+	ioSwitchLCBANK2,    // c011
+	ioSwitchLCRAMRD,    // c012
+	ioSwitchAUXRAMRD,   // c013
+	ioSwitchAUXRAMWRT,  // c014
+	ioSwitchCXROM,      // c015
+	ioSwitchALTZP,      // c016
+	ioSwitchC3ROM,      // c017
+	ioSwitch80STORE,    // c018
+	ioSwitchVBLINT,     // c019
+	ioSwitchTEXT,       // c01a
+	ioSwitchMIXED,      // c01b
+	ioSwitchPAGE2,      // c01c
+	ioSwitchHIRES,      // c01d
+	ioSwitchALTCHARSET, // c01e
+	ioSwitch80COL,      // c01f
+}
+
+func (iou *iou) onSwitchReadC01x(addr uint16) byte {
+	sw := switchReadC01x[addr-0x10]
+	return iou.getSoftSwitchBit7(sw)
+}
+
+func (iou *iou) onSwitchReadC05x(addr uint16) byte {
 	switch addr {
 	case 0x50:
 		iou.setSoftSwitch(ioSwitchTEXT, false)
@@ -255,6 +222,57 @@ func (iou *iou) onSwitchC05x(addr uint16) byte {
 			iou.setSoftSwitch(ioSwitchANNUNCIATOR3, true)
 		}
 	}
+	return 0xa0
+}
+
+func (iou *iou) onSwitchWriteC05x(addr uint16) {
+	// write does the same as read for the c05x bank of switches.
+	_ = iou.onSwitchReadC05x(addr)
+}
+
+func (iou *iou) onSwitchReadC07x(addr uint16) byte {
+	var ret byte
+
+	switch addr {
+	case 0x7e:
+		ret = iou.getSoftSwitchBit7(ioSwitchIOUDIS)
+	case 0x7f:
+		ret = iou.getSoftSwitchBit7(ioSwitchDHIRES)
+	}
+
+	iou.setSoftSwitch(ioSwitchVBLINT, false)
+
+	return ret
+}
+
+func (iou *iou) onSwitchWriteC07x(addr uint16) {
+	switch addr {
+	case 0x7e:
+		iou.setSoftSwitch(ioSwitchIOUDIS, false)
+	case 0x7f:
+		iou.setSoftSwitch(ioSwitchIOUDIS, true)
+	}
+}
+
+func (iou *iou) onSwitchReadC08x(addr uint16) byte {
+	// addr (least significant 4 bits, ignore 'z' bit)
+	// 0z00 = LCRAMRD=1 LCRAMWRT=0 LCBANK2=1
+	// 0z01 = LCRAMRD=0 LCRAMWRT=1 LCBANK2=1
+	// 0z10 = LCRAMRD=0 LCRAMWRT=0 LCBANK2=1
+	// 0z11 = LCRAMRD=1 LCRAMWRT=1 LCBANK2=1 (RR)
+	// 1z00 = LCRAMRD=1 LCRAMWRT=0 LCBANK2=0
+	// 1z01 = LCRAMRD=0 LCRAMWRT=1 LCBANK2=0
+	// 1z10 = LCRAMRD=0 LCRAMWRT=0 LCBANK2=0
+	// 1z11 = LCRAMRD=1 LCRAMWRT=1 LCBANK2=0 (RR)
+	// ----
+	// LCRAMRD  = !(bit0 ^ bit1)
+	// LCRAMWRT = bit 0
+	// LCBANK2  = !(bit 3)
+
+	iou.setSoftSwitch(ioSwitchLCRAMRD, !bitTest16(addr^(addr>>1), 1<<0))
+	iou.setSoftSwitch(ioSwitchLCRAMWRT, bitTest16(addr, 1<<0))
+	iou.setSoftSwitch(ioSwitchLCBANK2, !bitTest16(addr, 1<<3))
+
 	return 0xa0
 }
 
@@ -352,11 +370,34 @@ type ioSwitchBankAccessor struct {
 }
 
 func (a *ioSwitchBankAccessor) LoadByte(addr uint16) byte {
-	return a.iou.readSoftSwitch(addr)
+	index := addr >> 4
+	if index > 8 {
+		return 0
+	}
+
+	fn := switchBank[index].read
+	if fn == nil {
+		return 0
+	}
+
+	ret := fn(a.iou, addr)
+	a.iou.applySwitchUpdates()
+	return ret
 }
 
 func (a *ioSwitchBankAccessor) StoreByte(addr uint16, v byte) {
-	a.iou.writeSoftSwitch(addr, v)
+	index := addr >> 4
+	if index > 8 {
+		return
+	}
+
+	fn := switchBank[index].write
+	if fn == nil {
+		return
+	}
+
+	fn(a.iou, addr)
+	a.iou.applySwitchUpdates()
 }
 
 func (a *ioSwitchBankAccessor) CopyBytes(b []byte) {
