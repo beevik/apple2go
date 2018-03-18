@@ -61,22 +61,21 @@ var switchUpdates = []uint32{
 }
 
 type iou struct {
-	mmu *mmu
+	apple2 *apple2
 
 	switches uint32 // bitmask of current switch settings
 	updates  uint32 // pending updates required
 }
 
-func newIOU(mmu *mmu) *iou {
-	iou := &iou{
-		mmu: mmu,
+func newIOU(apple2 *apple2) *iou {
+	return &iou{
+		apple2: apple2,
 	}
+}
 
-	// Assign a memory accessor to the IO switches bank.
-	b := mmu.GetBank(bankIOSwitches, bankTypeMain)
+func (iou *iou) Init() {
+	b := iou.apple2.mmu.GetBank(bankIOSwitches, bankTypeMain)
 	b.accessor = &ioSwitchBankAccessor{iou: iou}
-
-	return iou
 }
 
 func (iou *iou) testSoftSwitch(sw ioSwitch) bool {
@@ -106,10 +105,10 @@ func (iou *iou) setSoftSwitch(sw ioSwitch, v bool) {
 
 var switchBank = []struct {
 	read  func(iou *iou, addr uint16) byte
-	write func(iou *iou, addr uint16)
+	write func(iou *iou, addr uint16, v byte)
 }{
-	/* c00x */ {write: (*iou).onSwitchWriteC00x},
-	/* c01x */ {read: (*iou).onSwitchReadC01x},
+	/* c00x */ {read: (*iou).onSwitchReadC00x, write: (*iou).onSwitchWriteC00x},
+	/* c01x */ {read: (*iou).onSwitchReadC01x, write: (*iou).onSwitchWriteC01x},
 	/* c02x */ {},
 	/* c03x */ {},
 	/* c04x */ {},
@@ -130,7 +129,17 @@ var switchWriteC00x = []ioSwitch{
 	/* c00e..c00f */ ioSwitchALTCHARSET,
 }
 
-func (iou *iou) onSwitchWriteC00x(addr uint16) {
+func (iou *iou) onSwitchReadC00x(addr uint16) byte {
+	switch addr {
+	case 0x00:
+		return iou.apple2.kb.GetKeyData()
+
+	default:
+		return 0
+	}
+}
+
+func (iou *iou) onSwitchWriteC00x(addr uint16, v byte) {
 	// Sequence:
 	//  addr0: switch1 OFF
 	//  addr1: switch1 ON
@@ -139,12 +148,12 @@ func (iou *iou) onSwitchWriteC00x(addr uint16) {
 	//  ...etc.
 
 	sw := switchWriteC00x[addr>>1]
-	v := (addr & 1) == 1
-	iou.setSoftSwitch(sw, v)
+	on := (addr & 1) == 1
+	iou.setSoftSwitch(sw, on)
 }
 
 var switchReadC01x = []ioSwitch{
-	ioSwitches,         // c010 (invalid)
+	ioSwitches,         // c010 (keydown)
 	ioSwitchLCBANK2,    // c011
 	ioSwitchLCRAMRD,    // c012
 	ioSwitchAUXRAMRD,   // c013
@@ -163,8 +172,26 @@ var switchReadC01x = []ioSwitch{
 }
 
 func (iou *iou) onSwitchReadC01x(addr uint16) byte {
-	sw := switchReadC01x[addr-0x10]
-	return iou.getSoftSwitchBit7(sw)
+	switch addr {
+	case 0x10:
+		kb := iou.apple2.kb
+		keyDown := kb.IsKeyDown()
+		kb.ResetKeyStrobe()
+		if keyDown {
+			return 0x80 | (kb.GetKeyData() & ^keyStrobe)
+		}
+		return 0
+
+	default:
+		sw := switchReadC01x[addr-0x10]
+		return iou.getSoftSwitchBit7(sw)
+	}
+}
+
+func (iou *iou) onSwitchWriteC01x(addr uint16, v byte) {
+	if addr == 0x10 {
+		_ = iou.onSwitchReadC01x(addr)
+	}
 }
 
 func (iou *iou) onSwitchReadC05x(addr uint16) byte {
@@ -225,7 +252,7 @@ func (iou *iou) onSwitchReadC05x(addr uint16) byte {
 	return 0xa0
 }
 
-func (iou *iou) onSwitchWriteC05x(addr uint16) {
+func (iou *iou) onSwitchWriteC05x(addr uint16, v byte) {
 	// write does the same as read for the c05x bank of switches.
 	_ = iou.onSwitchReadC05x(addr)
 }
@@ -245,7 +272,7 @@ func (iou *iou) onSwitchReadC07x(addr uint16) byte {
 	return ret
 }
 
-func (iou *iou) onSwitchWriteC07x(addr uint16) {
+func (iou *iou) onSwitchWriteC07x(addr uint16, v byte) {
 	switch addr {
 	case 0x7e:
 		iou.setSoftSwitch(ioSwitchIOUDIS, false)
@@ -295,7 +322,7 @@ func (iou *iou) applySwitchUpdates() {
 }
 
 func (iou *iou) applyZPSRAMSwitches() {
-	mmu := iou.mmu
+	mmu := iou.apple2.mmu
 
 	if iou.testSoftSwitch(ioSwitchALTZP) {
 		mmu.ActivateBank(bankZeroStackRAM, bankTypeAux, read|write)
@@ -305,7 +332,7 @@ func (iou *iou) applyZPSRAMSwitches() {
 }
 
 func (iou *iou) applySystemRAMSwitches() {
-	mmu := iou.mmu
+	mmu := iou.apple2.mmu
 
 	btr := iou.selectBankType(ioSwitchAUXRAMRD, bankTypeAux, bankTypeMain)
 	btw := iou.selectBankType(ioSwitchAUXRAMWRT, bankTypeAux, bankTypeMain)
@@ -330,7 +357,7 @@ func (iou *iou) applySystemRAMSwitches() {
 }
 
 func (iou *iou) applyLCRAMSwitches() {
-	mmu := iou.mmu
+	mmu := iou.apple2.mmu
 
 	btr := iou.selectBankType(ioSwitchAUXRAMRD, bankTypeAux, bankTypeMain)
 	btw := iou.selectBankType(ioSwitchAUXRAMWRT, bankTypeAux, bankTypeMain)
@@ -396,7 +423,7 @@ func (a *ioSwitchBankAccessor) StoreByte(addr uint16, v byte) {
 		return
 	}
 
-	fn(a.iou, addr)
+	fn(a.iou, addr, v)
 	a.iou.applySwitchUpdates()
 }
 

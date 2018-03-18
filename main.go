@@ -10,19 +10,23 @@ import (
 type apple2 struct {
 	mmu *mmu
 	iou *iou
+	kb  *keyboard
 	cpu *go6502.CPU
 }
 
 func newApple2() *apple2 {
-	mmu := newMMU()
-	iou := newIOU(mmu)
-	cpu := go6502.NewCPU(go6502.NMOS, mmu)
+	apple2 := &apple2{}
 
-	return &apple2{
-		mmu: mmu,
-		iou: iou,
-		cpu: cpu,
-	}
+	apple2.mmu = newMMU(apple2)
+	apple2.iou = newIOU(apple2)
+	apple2.kb = newKeyboard(apple2)
+	apple2.cpu = go6502.NewCPU(go6502.NMOS, apple2.mmu)
+
+	apple2.mmu.Init()
+	apple2.iou.Init()
+	apple2.kb.Init()
+
+	return apple2
 }
 
 func (a *apple2) LoadROM(filename string) error {

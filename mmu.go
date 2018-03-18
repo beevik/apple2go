@@ -69,6 +69,8 @@ const (
 // An mmu represents the Apple2 memory management unit. It manages multiple
 // memory banks, each with different address ranges and access patterns.
 type mmu struct {
+	apple2 *apple2
+
 	mainRAM   []byte // entire physical 64K main RAM address space
 	auxRAM    []byte // entire physical 64K aux RAM address space
 	systemROM []byte // Holds 16K of Apple II CD/EF ROMs
@@ -77,41 +79,41 @@ type mmu struct {
 	pages [256]page                // virtual 64K address space broken into 256-byte pages
 }
 
-func newMMU() *mmu {
-	mainRAM := make([]byte, 64*1024)
-	auxRAM := make([]byte, 64*1024)
-	systemROM := make([]byte, 16*1024)
-
-	m := &mmu{
-		mainRAM:   mainRAM,
-		auxRAM:    auxRAM,
-		systemROM: systemROM,
+func newMMU(apple2 *apple2) *mmu {
+	return &mmu{
+		apple2: apple2,
 	}
+}
+
+func (m *mmu) Init() {
+	m.mainRAM = make([]byte, 64*1024)
+	m.auxRAM = make([]byte, 64*1024)
+	m.systemROM = make([]byte, 16*1024)
 
 	m.addIOBank(bankIOSwitches, 0x0100, 0xc000)
 	m.addIOBank(bankSlotROM, 0x0700, 0xc100)
 	m.addIOBank(bankExpansionROM, 0x800, 0xc800)
 
-	m.addROMBank(bankSystemCXROM, systemROM[0x0100:0x1000], 0xc100)
-	m.addROMBank(bankSystemDEFROM, systemROM[0x1000:0x4000], 0xd000)
+	m.addROMBank(bankSystemCXROM, m.systemROM[0x0100:0x1000], 0xc100)
+	m.addROMBank(bankSystemDEFROM, m.systemROM[0x1000:0x4000], 0xd000)
 
-	m.addRAMBank(bankZeroStackRAM, bankTypeMain, mainRAM[0x0000:0x0200], 0x0000)
-	m.addRAMBank(bankMainRAM, bankTypeMain, mainRAM[0x0200:0xc000], 0x0200)
-	m.addRAMBank(bankDisplayPage1, bankTypeMain, mainRAM[0x0400:0x0800], 0x0400)
-	m.addRAMBank(bankDisplayPage2, bankTypeMain, mainRAM[0x0800:0x0c00], 0x0800)
-	m.addRAMBank(bankHiRes1, bankTypeMain, mainRAM[0x2000:0x4000], 0x2000)
-	m.addRAMBank(bankHiRes2, bankTypeMain, mainRAM[0x4000:0x8000], 0x4000)
-	m.addRAMBank(bankLangCardDX1RAM, bankTypeMain, mainRAM[0xc000:0xd000], 0xd000)
-	m.addRAMBank(bankLangCardDX2RAM, bankTypeMain, mainRAM[0xd000:0xe000], 0xd000)
-	m.addRAMBank(bankLangCardEFRAM, bankTypeMain, mainRAM[0xe000:], 0xe000)
+	m.addRAMBank(bankZeroStackRAM, bankTypeMain, m.mainRAM[0x0000:0x0200], 0x0000)
+	m.addRAMBank(bankMainRAM, bankTypeMain, m.mainRAM[0x0200:0xc000], 0x0200)
+	m.addRAMBank(bankDisplayPage1, bankTypeMain, m.mainRAM[0x0400:0x0800], 0x0400)
+	m.addRAMBank(bankDisplayPage2, bankTypeMain, m.mainRAM[0x0800:0x0c00], 0x0800)
+	m.addRAMBank(bankHiRes1, bankTypeMain, m.mainRAM[0x2000:0x4000], 0x2000)
+	m.addRAMBank(bankHiRes2, bankTypeMain, m.mainRAM[0x4000:0x8000], 0x4000)
+	m.addRAMBank(bankLangCardDX1RAM, bankTypeMain, m.mainRAM[0xc000:0xd000], 0xd000)
+	m.addRAMBank(bankLangCardDX2RAM, bankTypeMain, m.mainRAM[0xd000:0xe000], 0xd000)
+	m.addRAMBank(bankLangCardEFRAM, bankTypeMain, m.mainRAM[0xe000:], 0xe000)
 
-	m.addRAMBank(bankZeroStackRAM, bankTypeAux, mainRAM[0x0000:0x0200], 0x0000)
-	m.addRAMBank(bankMainRAM, bankTypeAux, auxRAM[0x0200:0xc000], 0x0200)
-	m.addRAMBank(bankDisplayPage1, bankTypeAux, auxRAM[0x0400:0x0800], 0x0400)
-	m.addRAMBank(bankHiRes1, bankTypeAux, auxRAM[0x2000:0x4000], 0x2000)
-	m.addRAMBank(bankLangCardDX1RAM, bankTypeAux, auxRAM[0xc000:0xd000], 0xd000)
-	m.addRAMBank(bankLangCardDX2RAM, bankTypeAux, auxRAM[0xd000:0xe000], 0xd000)
-	m.addRAMBank(bankLangCardEFRAM, bankTypeAux, auxRAM[0xe000:], 0xe000)
+	m.addRAMBank(bankZeroStackRAM, bankTypeAux, m.mainRAM[0x0000:0x0200], 0x0000)
+	m.addRAMBank(bankMainRAM, bankTypeAux, m.auxRAM[0x0200:0xc000], 0x0200)
+	m.addRAMBank(bankDisplayPage1, bankTypeAux, m.auxRAM[0x0400:0x0800], 0x0400)
+	m.addRAMBank(bankHiRes1, bankTypeAux, m.auxRAM[0x2000:0x4000], 0x2000)
+	m.addRAMBank(bankLangCardDX1RAM, bankTypeAux, m.auxRAM[0xc000:0xd000], 0xd000)
+	m.addRAMBank(bankLangCardDX2RAM, bankTypeAux, m.auxRAM[0xd000:0xe000], 0xd000)
+	m.addRAMBank(bankLangCardEFRAM, bankTypeAux, m.auxRAM[0xe000:], 0xe000)
 
 	// Activate initial memory banks.
 	m.ActivateBank(bankZeroStackRAM, bankTypeMain, read|write)
@@ -120,8 +122,6 @@ func newMMU() *mmu {
 	m.ActivateBank(bankSystemCXROM, bankTypeMain, read)
 	m.ActivateBank(bankSystemDEFROM, bankTypeMain, read)
 	m.ActivateBank(bankIOSwitches, bankTypeMain, read|write)
-
-	return m
 }
 
 // LoadSystemROM loads the system ROM memory from a reader.
