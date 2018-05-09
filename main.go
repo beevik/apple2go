@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/beevik/go6502"
+	"github.com/beevik/go6502/cpu"
 )
 
 type apple2 struct {
 	mmu *mmu
 	iou *iou
 	kb  *keyboard
-	cpu *go6502.CPU
+	cpu *cpu.CPU
 }
 
 func newApple2() *apple2 {
@@ -20,7 +20,7 @@ func newApple2() *apple2 {
 	apple2.mmu = newMMU(apple2)
 	apple2.iou = newIOU(apple2)
 	apple2.kb = newKeyboard(apple2)
-	apple2.cpu = go6502.NewCPU(go6502.NMOS, apple2.mmu)
+	apple2.cpu = cpu.NewCPU(cpu.NMOS, apple2.mmu)
 
 	apple2.mmu.Init()
 	apple2.iou.Init()
