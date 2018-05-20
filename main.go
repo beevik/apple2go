@@ -11,6 +11,8 @@ type apple2 struct {
 	mmu *mmu
 	iou *iou
 	kb  *keyboard
+	sp  *speaker
+	gi  *gameIO
 	cpu *cpu.CPU
 }
 
@@ -20,11 +22,15 @@ func newApple2() *apple2 {
 	apple2.mmu = newMMU(apple2)
 	apple2.iou = newIOU(apple2)
 	apple2.kb = newKeyboard(apple2)
+	apple2.sp = newSpeaker(apple2)
+	apple2.gi = newGameIO(apple2)
 	apple2.cpu = cpu.NewCPU(cpu.NMOS, apple2.mmu)
 
 	apple2.mmu.Init()
 	apple2.iou.Init()
 	apple2.kb.Init()
+	apple2.sp.Init()
+	apple2.gi.Init()
 
 	return apple2
 }

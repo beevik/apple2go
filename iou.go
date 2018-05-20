@@ -26,7 +26,7 @@ const (
 	ioSwitchANNUNCIATOR2                 // if IOUDIS is 0: 1 = hand control annunciator 2 on, 0 = off
 	ioSwitchANNUNCIATOR3                 // if IOUDIS is 0: 1 = hand control annunciator 3 on, 0 = off
 
-	ioSwitches
+	ioSwitchINVALID
 )
 
 const (
@@ -63,6 +63,10 @@ var switchUpdates = []uint32{
 type iou struct {
 	apple2 *apple2
 
+	// apple2 convenience accessors
+	kb  *keyboard
+	mmu *mmu
+
 	switches uint32 // bitmask of current switch settings
 	updates  uint32 // pending updates required
 }
@@ -74,7 +78,10 @@ func newIOU(apple2 *apple2) *iou {
 }
 
 func (iou *iou) Init() {
-	b := iou.apple2.mmu.GetBank(bankIOSwitches, bankTypeMain)
+	iou.kb = iou.apple2.kb
+	iou.mmu = iou.apple2.mmu
+
+	b := iou.mmu.GetBank(bankIOSwitches, bankTypeMain)
 	b.accessor = &ioSwitchBankAccessor{iou: iou}
 }
 
@@ -110,8 +117,8 @@ var switchBank = []struct {
 	/* c00x */ {read: (*iou).onSwitchReadC00x, write: (*iou).onSwitchWriteC00x},
 	/* c01x */ {read: (*iou).onSwitchReadC01x, write: (*iou).onSwitchWriteC01x},
 	/* c02x */ {},
-	/* c03x */ {},
-	/* c04x */ {},
+	/* c03x */ {read: (*iou).onSwitchReadC03x},
+	/* c04x */ {read: (*iou).onSwitchReadC04x},
 	/* c05x */ {read: (*iou).onSwitchReadC05x, write: (*iou).onSwitchWriteC05x},
 	/* c06x */ {},
 	/* c07x */ {write: (*iou).onSwitchWriteC07x},
@@ -132,7 +139,7 @@ var switchWriteC00x = []ioSwitch{
 func (iou *iou) onSwitchReadC00x(addr uint16) byte {
 	switch addr {
 	case 0x00:
-		return iou.apple2.kb.GetKeyData()
+		return iou.kb.GetKeyData()
 
 	default:
 		return 0
@@ -153,7 +160,7 @@ func (iou *iou) onSwitchWriteC00x(addr uint16, v byte) {
 }
 
 var switchReadC01x = []ioSwitch{
-	ioSwitches,         // c010 (keydown)
+	ioSwitchINVALID,    // c010 (keydown)
 	ioSwitchLCBANK2,    // c011
 	ioSwitchLCRAMRD,    // c012
 	ioSwitchAUXRAMRD,   // c013
@@ -174,7 +181,7 @@ var switchReadC01x = []ioSwitch{
 func (iou *iou) onSwitchReadC01x(addr uint16) byte {
 	switch addr {
 	case 0x10:
-		kb := iou.apple2.kb
+		kb := iou.kb
 		keyDown := kb.IsKeyDown()
 		kb.ResetKeyStrobe()
 		if keyDown {
@@ -192,6 +199,22 @@ func (iou *iou) onSwitchWriteC01x(addr uint16, v byte) {
 	if addr == 0x10 {
 		_ = iou.onSwitchReadC01x(addr)
 	}
+}
+
+func (iou *iou) onSwitchReadC03x(addr uint16) byte {
+	switch addr {
+	case 0x30:
+		iou.apple2.sp.Toggle()
+	}
+	return 0
+}
+
+func (iou *iou) onSwitchReadC04x(addr uint16) byte {
+	switch addr {
+	case 0x40:
+		return iou.apple2.gi.GetStrobe()
+	}
+	return 0
 }
 
 func (iou *iou) onSwitchReadC05x(addr uint16) byte {
@@ -322,7 +345,7 @@ func (iou *iou) applySwitchUpdates() {
 }
 
 func (iou *iou) applyZPSRAMSwitches() {
-	mmu := iou.apple2.mmu
+	mmu := iou.mmu
 
 	if iou.testSoftSwitch(ioSwitchALTZP) {
 		mmu.ActivateBank(bankZeroStackRAM, bankTypeAux, read|write)
@@ -332,7 +355,7 @@ func (iou *iou) applyZPSRAMSwitches() {
 }
 
 func (iou *iou) applySystemRAMSwitches() {
-	mmu := iou.apple2.mmu
+	mmu := iou.mmu
 
 	btr := iou.selectBankType(ioSwitchAUXRAMRD, bankTypeAux, bankTypeMain)
 	btw := iou.selectBankType(ioSwitchAUXRAMWRT, bankTypeAux, bankTypeMain)
@@ -357,7 +380,7 @@ func (iou *iou) applySystemRAMSwitches() {
 }
 
 func (iou *iou) applyLCRAMSwitches() {
-	mmu := iou.apple2.mmu
+	mmu := iou.mmu
 
 	btr := iou.selectBankType(ioSwitchAUXRAMRD, bankTypeAux, bankTypeMain)
 	btw := iou.selectBankType(ioSwitchAUXRAMWRT, bankTypeAux, bankTypeMain)
